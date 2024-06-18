@@ -44,7 +44,7 @@ using std::placeholders::_1;
 
 class IG_LIO_NODE : public rclcpp::Node {
 public:
-  IG_LIO_NODE(std::string package_path) : Node("ig_lio_node"), tf_buffer_(this->get_clock()), tf_listener_(tf_buffer_){
+  IG_LIO_NODE(std::string package_path) : Node("ig_lio_node"){
     // Setup signal handler
     signal(SIGINT, IG_LIO_NODE::SigHandle);
     DeclareParams();
@@ -67,7 +67,7 @@ public:
     Initialize();
     //Register pub/sub
     Topics();
-    tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(*this);
+    // tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(*this);
 
 
 
@@ -101,16 +101,12 @@ private:
 
   void DeclareParams(){
     // Initialize publishers, subscribers, parameters, etc.
-    this->declare_parameter<bool>("odom/sendTF", false);
     this->declare_parameter<std::string>("odom/imu_topic", "imu/data");
     this->declare_parameter<std::string>("odom/lidar_topic", "velodyne_points");
     this->declare_parameter<std::string>("odom/lidar_type", "velodyne");
 
     this->declare_parameter<std::string>("odom/odom_frame","odom");
     this->declare_parameter<std::string>("odom/robot_frame","base_link");
-    this->declare_parameter<std::string>("odom/imu_frame", "imu_link");
-    this->declare_parameter<std::string>("odom/lidar_frame","velodyne");
-    this->declare_parameter<std::string>("map/map_frame","odom" );
 
     this->declare_parameter<double>("odom/time_scale", 1000);
     this->declare_parameter<int>("odom/point_filter_num", 6);
@@ -142,30 +138,14 @@ private:
     this->declare_parameter<double>("odom/max_radius", 150.0);
     this->declare_parameter<bool>("odom/debug", false);
 
-    // For vector parameters like extrinsic, it's a bit more complex
-    // Declare and get extrinsic parameters (vectors)
-    this->declare_parameter<std::vector<double>>("extrinsics/imu2lidar/t", default_t_imu_lidar);
-    this->declare_parameter<std::vector<double>>("extrinsics/imu2lidar/r", default_R_imu_lidar);
-
-    this->declare_parameter<std::vector<double>>("extrinsics/robot2imu/t", default_t_imu_lidar);
-    this->declare_parameter<std::vector<double>>("extrinsics/robot2imu/r", default_R_imu_lidar);
-
-    this->declare_parameter<std::vector<double>>("extrinsics/robot2lidar/t", default_t_imu_lidar);
-    this->declare_parameter<std::vector<double>>("extrinsics/robot2lidar/r", default_R_imu_lidar);
-
-
   }
 
   void GetParams(){
-    this->get_parameter("odom/sendTF", sendTF);
     this->get_parameter("odom/imu_topic", imu_topic);
     this->get_parameter("odom/lidar_topic", lidar_topic);
     this->get_parameter("odom/lidar_type", lidar_type_string);
     this->get_parameter("odom/odom_frame", odom_frame);
     this->get_parameter("odom/robot_frame", robot_frame);    
-    this->get_parameter("odom/imu_frame", imu_frame);
-    this->get_parameter("odom/lidar_frame", lidar_frame);
-    this->get_parameter("map/map_frame", map_frame);
 
     this->get_parameter("odom/time_scale", time_scale);
     this->get_parameter("odom/point_filter_num", point_filter_num);
@@ -195,16 +175,7 @@ private:
     this->get_parameter("odom/min_radius", min_radius);
     this->get_parameter("odom/max_radius", max_radius);
     this->get_parameter("odom/debug", debug_);
-
-    this->get_parameter("extrinsics/imu2lidar/t", t_imu_lidar_v);
-    this->get_parameter("extrinsics/imu2lidar/r", R_imu_lidar_v);
-    this->get_parameter("extrinsics/robot2imu/t", robot2imu_t);
-    this->get_parameter("extrinsics/robot2imu/r", robot2imu_r);
-    this->get_parameter("extrinsics/robot2lidar/t", robot2lidar_t);
-    this->get_parameter("extrinsics/robot2lidar/r", robot2lidar_r);
-
-
-    
+  
 
   }
 
@@ -248,27 +219,7 @@ private:
                 << std::endl
                 << "min_radius: " << min_radius << std::endl
                 << "max_radius: " << max_radius;
-    // 3. load extrinsic          
-    T_imu_lidar = Eigen::Matrix4d::Identity();
-    T_imu_lidar.block<3, 1>(0, 3) =
-        Eigen::Map<const Eigen::Matrix<double, -1, -1, Eigen::RowMajor>>(
-            t_imu_lidar_v.data(), 3, 1);
-    T_imu_lidar.block<3, 3>(0, 0) =
-        Eigen::Map<const Eigen::Matrix<double, -1, -1, Eigen::RowMajor>>(
-            R_imu_lidar_v.data(), 3, 3);
-
-    this->extrinsics.robot2imu.t = Eigen::Vector3f(robot2imu_t[0], robot2imu_t[1], robot2imu_t[2]);
-    this->extrinsics.robot2imu.R = Eigen::Map<const Eigen::Matrix<float, -1, -1, Eigen::RowMajor>>(std::vector<float>(robot2imu_r.begin(), robot2imu_r.end()).data(), 3, 3);
-    this->extrinsics.robot2imu_T = Eigen::Matrix4f::Identity();
-    this->extrinsics.robot2imu_T.block(0, 3, 3, 1) = this->extrinsics.robot2imu.t;
-    this->extrinsics.robot2imu_T.block(0, 0, 3, 3) = this->extrinsics.robot2imu.R;
-
-    this->extrinsics.robot2lidar.t = Eigen::Vector3f(robot2lidar_t[0], robot2lidar_t[1], robot2lidar_t[2]);
-    this->extrinsics.robot2lidar.R = Eigen::Map<const Eigen::Matrix<float, -1, -1, Eigen::RowMajor>>(std::vector<float>(robot2lidar_r.begin(), robot2lidar_r.end()).data(), 3, 3);
-
-    this->extrinsics.robot2lidar_T = Eigen::Matrix4f::Identity();
-    this->extrinsics.robot2lidar_T.block(0, 3, 3, 1) = this->extrinsics.robot2lidar.t;
-    this->extrinsics.robot2lidar_T.block(0, 0, 3, 3) = this->extrinsics.robot2lidar.R;
+         
 
 
     LIO::Config lio_config;
@@ -293,8 +244,6 @@ private:
     lio_config.voxel_map_resolution = voxel_map_resolution;
     lio_config.min_radius = min_radius;
     lio_config.max_radius = max_radius;
-
-    lio_config.T_imu_lidar = T_imu_lidar;
 
     lio_ptr = std::make_shared<LIO>(lio_config);
 
@@ -725,6 +674,7 @@ void Process() {
                         sensor_measurement.imu_buff_.at(i).angular_velocity.y,
                         sensor_measurement.imu_buff_.at(i).angular_velocity.z);
     lio_ptr->imuRPY2rosRPY(&(sensor_measurement.imu_buff_.at(i)), &cloudInfo.imu_roll_init, &cloudInfo.imu_pitch_init, &cloudInfo.imu_yaw_init);
+    cloudInfo.imu_available = true;
     lio_ptr->Predict(time, acc, gyr);
   }
 
@@ -774,47 +724,42 @@ void Process() {
 
   // Extract the Euler angles (roll, pitch, yaw) from the rotation matrix
   Eigen::Vector3d euler_angles = temp_rotation_matrix.eulerAngles(2, 1, 0); // ZYX order: yaw, pitch, roll
-  cloudInfo.initial_guess_x = result_pose(0, 3);
-  cloudInfo.initial_guess_y = result_pose(1, 3);
-  cloudInfo.initial_guess_z = result_pose(2, 3);
-  cloudInfo.initial_guess_roll  = euler_angles[0];
-  cloudInfo.initial_guess_pitch = euler_angles[1];
-  cloudInfo.initial_guess_yaw   = euler_angles[2];
-
+  cloudInfo.current_odom = odom_msg;
+  cloudInfo.odom_available = true;
+  pubCloudInfo_->publish(cloudInfo);
 
 
   // publish_odom_To_map(odom_msg);
   // transform: odom to robot_frame
-  geometry_msgs::msg::TransformStamped transformStamped;
+  // geometry_msgs::msg::TransformStamped transformStamped;
 
-  transformStamped.header.stamp    = current_time_stamp; 
-  transformStamped.header.frame_id = this->odom_frame;
-  transformStamped.child_frame_id  = this->robot_frame;
+  // transformStamped.header.stamp    = current_time_stamp; 
+  // transformStamped.header.frame_id = this->odom_frame;
+  // transformStamped.child_frame_id  = this->robot_frame;
 
-  // Set the translation
-  transformStamped.transform.translation.x = result_pose(0, 3);
-  transformStamped.transform.translation.y = result_pose(1, 3);
-  transformStamped.transform.translation.z = result_pose(2, 3);
+  // // Set the translation
+  // transformStamped.transform.translation.x = result_pose(0, 3);
+  // transformStamped.transform.translation.y = result_pose(1, 3);
+  // transformStamped.transform.translation.z = result_pose(2, 3);
 
-  // Set the rotation
-  tf2::Quaternion q_tf;
-  q_tf.setX(temp_q.x());
-  q_tf.setY(temp_q.y());
-  q_tf.setZ(temp_q.z());
-  q_tf.setW(temp_q.w());
+  // // Set the rotation
+  // tf2::Quaternion q_tf;
+  // q_tf.setX(temp_q.x());
+  // q_tf.setY(temp_q.y());
+  // q_tf.setZ(temp_q.z());
+  // q_tf.setW(temp_q.w());
 
-  transformStamped.transform.rotation.x = q_tf.x();
-  transformStamped.transform.rotation.y = q_tf.y();
-  transformStamped.transform.rotation.z = q_tf.z();
-  transformStamped.transform.rotation.w = q_tf.w();
+  // transformStamped.transform.rotation.x = q_tf.x();
+  // transformStamped.transform.rotation.y = q_tf.y();
+  // transformStamped.transform.rotation.z = q_tf.z();
+  // transformStamped.transform.rotation.w = q_tf.w();
 
-  // Send the transform
-  tf_broadcaster_->sendTransform(transformStamped);
+  // // Send the transform
+  // tf_broadcaster_->sendTransform(transformStamped);
 
 
 
-  if (sendTF)
-    publishToRos(result_pose, temp_q, current_time_stamp);
+
 
 
   // publish dense scan
@@ -909,69 +854,10 @@ void Process() {
   }
 
 
-  void publish_odom_To_map(const nav_msgs::msg::Odometry& odom){
-      nav_msgs::msg::Odometry odom_transformed;
-      geometry_msgs::msg::TransformStamped transform_stamped;
-      geometry_msgs::msg::PoseStamped odom_pose;
-      odom_pose.pose = odom.pose.pose;
-      odom_pose.header = odom.header;
-      geometry_msgs::msg::PoseStamped map_pose;
-      try {
-          transform_stamped = tf_buffer_.lookupTransform(map_frame, odom_pose.header.frame_id,
-                                                      odom_pose.header.stamp, rclcpp::Duration::from_seconds(1.0));
-          tf2::doTransform(odom_pose, map_pose, transform_stamped);
-      } catch (tf2::TransformException &ex) {
-          // RCLCPP_WARN(this->get_logger(), "Could not transform cloud: %s", ex.what());
-          return;
-      }
-      // Set the header of the transformed odometry message
-      odom_transformed.header.stamp = odom.header.stamp;
-      odom_transformed.header.frame_id = map_frame;
-      odom_transformed.pose.pose = map_pose.pose;
-      pubOdomToMap_->publish(odom_transformed);
-  }
 
 
-  void publishToRos(Eigen::Matrix4d& result_pose, Eigen::Quaterniond& temp_q, rclcpp::Time& current_time_stamp){
 
 
-    // transform: robot to imu
-    geometry_msgs::msg::TransformStamped transformStamped;
-    transformStamped.header.stamp = current_time_stamp;
-    transformStamped.header.frame_id = this->robot_frame;
-    transformStamped.child_frame_id = this->imu_frame;
-
-    transformStamped.transform.translation.x = this->extrinsics.robot2imu.t[0];
-    transformStamped.transform.translation.y = this->extrinsics.robot2imu.t[1];
-    transformStamped.transform.translation.z = this->extrinsics.robot2imu.t[2];
-
-    Eigen::Quaternionf q(this->extrinsics.robot2imu.R);
-    transformStamped.transform.rotation.w = q.w();
-    transformStamped.transform.rotation.x = q.x();
-    transformStamped.transform.rotation.y = q.y();
-    transformStamped.transform.rotation.z = q.z();
-
-    tf_broadcaster_->sendTransform(transformStamped);
-
-
-    // transform: robot to lidar
-    transformStamped.header.stamp = current_time_stamp;
-    transformStamped.header.frame_id = this->robot_frame;
-    transformStamped.child_frame_id = this->lidar_frame;
-
-    transformStamped.transform.translation.x = this->extrinsics.robot2lidar.t[0];
-    transformStamped.transform.translation.y = this->extrinsics.robot2lidar.t[1];
-    transformStamped.transform.translation.z = this->extrinsics.robot2lidar.t[2];
-    
-
-    Eigen::Quaternionf qq(this->extrinsics.robot2lidar.R);
-    transformStamped.transform.rotation.w = qq.w();
-    transformStamped.transform.rotation.x = qq.x();
-    transformStamped.transform.rotation.y = qq.y();
-    transformStamped.transform.rotation.z = qq.z();
-
-    tf_broadcaster_->sendTransform(transformStamped);
-  }
 
 
 
@@ -1003,9 +889,6 @@ void Process() {
   std::string lidar_type_string;
   std::string odom_frame;
   std::string robot_frame;
-  std::string imu_frame;
-  std::string lidar_frame;
-  std::string map_frame;
   LidarType lidar_type_ = LidarType::LIVOX;
   bool enable_acc_correct;
   bool enable_undistort;
@@ -1034,14 +917,7 @@ void Process() {
   std::deque<std::pair<double, pcl::PointCloud<PointType>::Ptr>> cloud_buff;
   std::deque<sensor_msgs::msg::Imu> imu_buff;
   std::deque<nav_msgs::msg::Odometry> gnss_buff;
-  std::vector<double> t_imu_lidar_v, R_imu_lidar_v; 
-  std::vector<double> robot2imu_t, robot2imu_r, robot2lidar_t, robot2lidar_r; 
-  std::string package_path_;
-  // Set default values for t_imu_lidar and R_imu_lidar
-  std::vector<double> default_t_imu_lidar = {0.0, 0.0, 0.0};
-  std::vector<double> default_R_imu_lidar = {1.0, 0.0, 0.0,  // First row of identity matrix
-                                            0.0, 1.0, 0.0,  // Second row
-                                            0.0, 0.0, 1.0}; // Third row
+
   nav_msgs::msg::Path path_array;
   techshare_ros_pkg2::msg::CloudInfo cloudInfo;
   Timer timer;
@@ -1053,20 +929,8 @@ void Process() {
   // LIO and other related objects
   std::shared_ptr<LIO> lio_ptr_;
   std::shared_ptr<PointCloudPreprocess> cloud_preprocess_ptr_;
-  tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_;
   std::thread processing_thread_;
-  struct Extrinsics {
-    struct SE3 {
-      Eigen::Vector3f t;
-      Eigen::Matrix3f R;
-    };
-    SE3 robot2imu;
-    SE3 robot2lidar;
-    Eigen::Matrix4f robot2imu_T;
-    Eigen::Matrix4f robot2lidar_T;
-  }; Extrinsics extrinsics;
-
+  std::string package_path_;
 };
 
 int main(int argc, char **argv) {

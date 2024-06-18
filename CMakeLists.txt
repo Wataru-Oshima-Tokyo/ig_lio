@@ -82,7 +82,10 @@ add_executable(${PROJECT_NAME}_map_node
   src/map.cpp
 )
 
-
+# Declare a C++ executable
+add_executable(${PROJECT_NAME}_transform_node
+  src/ig_lio_transform.cpp
+)
 
 
 # Specify libraries to link a library or executable target against
@@ -98,7 +101,10 @@ ament_target_dependencies(${PROJECT_NAME}_map_node
 ament_target_dependencies(${PROJECT_NAME}_relocalize_node
   ${dependencies}
 )
-
+# Specify libraries to link a library or executable target against
+ament_target_dependencies(${PROJECT_NAME}_transform_node
+  ${dependencies}
+)
 target_link_libraries(${PROJECT_NAME}_node
   ${PCL_LIBRARIES}
   ${TBB_LIBRARIES}
@@ -117,9 +123,18 @@ target_link_libraries(${PROJECT_NAME}_relocalize_node
   glog
   gflags
 )
+target_link_libraries(${PROJECT_NAME}_transform_node
+  ${PCL_LIBRARIES}
+  ${TBB_LIBRARIES}
+  glog
+  gflags
+)
 
 # Install the executable
-install(TARGETS ${PROJECT_NAME}_node ${PROJECT_NAME}_map_node ${PROJECT_NAME}_relocalize_node
+install(TARGETS ${PROJECT_NAME}_node 
+  ${PROJECT_NAME}_map_node 
+  ${PROJECT_NAME}_relocalize_node 
+  ${PROJECT_NAME}_transform_node
   DESTINATION lib/${PROJECT_NAME}
 )
 

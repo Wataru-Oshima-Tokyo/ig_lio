@@ -11,6 +11,8 @@ from launch.event_handlers import OnProcessExit
 from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
 from launch.conditions import IfCondition
+from nav2_common.launch import RewrittenYaml
+
 def robosense_params(param_dir):
     param_substitutions = {
         'odom/lidar_topic': "/rslidar_points",
@@ -135,13 +137,20 @@ def launch_setup(context, *args, **kwargs):
         output='screen',
         parameters=[config_path, {'map/map_name': map_name}, {'map/map_location': map_location}],  # Pass the parameter file path directly
     )
-
-    map_to_odom_tf = Node(
-        package='tf2_ros',
-        executable='static_transform_publisher',
-        name='world_to_map',
-        arguments=['0', '0', '0', '0', '0', '0', '1', 'map', 'lio_odom']
+    ig_lio_transform_node =  Node(
+        package='ig_lio',
+        executable='ig_lio_transform_node',
+        name='ig_lio_transform_node',
+        output='screen',
+        parameters=[config_path]  # Pass the parameter file path directly
     )
+
+    # map_to_odom_tf = Node(
+    #     package='tf2_ros',
+    #     executable='static_transform_publisher',
+    #     name='world_to_map',
+    #     arguments=['0', '0', '0', '0', '0', '0', '1', 'map', 'lio_odom']
+    # )
     rviz_node = Node(
         package='rviz2',
         executable='rviz2',
@@ -151,7 +160,7 @@ def launch_setup(context, *args, **kwargs):
     return [
         ig_lio_node,
         ig_lio_map_node,
-        map_to_odom_tf,
+        ig_lio_transform_node,
         rviz_node
     ]
 def generate_launch_description():

@@ -10,6 +10,7 @@ from launch_ros.substitutions import FindPackageShare
 from launch.event_handlers import OnProcessExit
 from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
+from nav2_common.launch import RewrittenYaml
 
 def robosense_params(param_dir):
     param_substitutions = {
@@ -134,13 +135,7 @@ def launch_setup(context, *args, **kwargs):
     #     output='screen',
     #     parameters=[reloc_param_path],  # Pass the parameter file path directly
     # )
-    ig_lio_relocalize_node = Node(
-        package='ig_lio',
-        executable='ig_lio_relocalize_node',
-        name='ig_lio_node',
-        output='screen',
-        parameters=[config_path]  # Pass the parameter file path directly
-    )
+
     # ground_removal_node = Node(
     #     package="pointcloud_handler",
     #     executable="filter_pointcloud",
@@ -173,11 +168,25 @@ def launch_setup(context, *args, **kwargs):
         output='screen',
         parameters=[config_path]  # Pass the parameter file path directly
     )
+    ig_lio_transform_node =  Node(
+        package='ig_lio',
+        executable='ig_lio_transform_node',
+        name='ig_lio_transform_node',
+        output='screen',
+        parameters=[config_path]  # Pass the parameter file path directly
+    )
+    ig_lio_relocalize_node = Node(
+        package='ig_lio',
+        executable='ig_lio_relocalize_node',
+        name='ig_lio_node',
+        output='screen',
+        parameters=[config_path, {'map/map_name': map_name}, {'map/map_location': map_location}]  # Pass the parameter file path directly
+    )
     return [
-        lio_relocalization_node,
-        ig_lio_relocalize_node
+        ig_lio_node,
+        ig_lio_relocalize_node,
+        ig_lio_transform_node
         # lio_tf_fusion_node,
-        # ig_lio_node,
     ]
 
 def generate_launch_description():
