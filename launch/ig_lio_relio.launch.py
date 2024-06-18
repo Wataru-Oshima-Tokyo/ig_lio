@@ -11,35 +11,136 @@ from launch.event_handlers import OnProcessExit
 from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
 
+def robosense_params(param_dir):
+    param_substitutions = {
+        'odom/lidar_topic': "/rslidar_points",
+        'odom/lidar_frame': "rslidar",
+        'odom/lidar_type': "robosense",
+        # 'N_SCAN': "32",
+        # 'Horizon_SCAN': "1800",
+        # 'timeField': "time",
+        # 'downsampleRate': "1",
+        'odom/min_radius': "0.5",
+        'odom/max_radius': "60.0"}
+
+    configured_params = RewrittenYaml(
+            source_file=param_dir,
+            root_key='',
+            param_rewrites=param_substitutions,
+            convert_types=True)
+    return configured_params
+
+
+def hesai_params(param_dir):
+    param_substitutions = {
+        'odom/lidar_topic': "/points_raw",
+        'odom/lidar_frame': "hesai_lidar",
+        'odom/lidar_type': "hesai",
+        # 'N_SCAN': "16",
+        # 'Horizon_SCAN': "1800",
+        # 'timeField': "time",
+        # 'downsampleRate': "1",
+        'odom/min_radius': "0.5",
+        'odom/max_radius': "60.0"}
+
+    configured_params = RewrittenYaml(
+            source_file=param_dir,
+            root_key='',
+            param_rewrites=param_substitutions,
+            convert_types=True)
+    return configured_params
+
+def velodyne_params(param_dir):
+    param_substitutions = {
+        'odom/lidar_topic': "/points_raw",
+        'odom/lidar_frame': "velodyne",
+        'odom/lidar_type': "velodyne",
+        # 'N_SCAN': "16",
+        # 'Horizon_SCAN': "1800",
+        # 'timeField': "time",
+        # 'downsampleRate': "1",
+        'odom/min_radius': "0.5",
+        'odom/max_radius': "60.0"}
+
+    configured_params = RewrittenYaml(
+            source_file=param_dir,
+            root_key='',
+            param_rewrites=param_substitutions,
+            convert_types=True)
+    return configured_params
+
+
+def livox_params(param_dir):
+    param_substitutions = {
+        'odom/lidar_topic': "/livox/lidar_custom",
+        'odom/lidar_frame': "livox_frame",
+        'odom/lidar_type': "livox",
+        # 'N_SCAN': "4",
+        # 'Horizon_SCAN': "6000",
+        # 'timeField': "time",
+        # 'downsampleRate': "1",
+        'odom/min_radius': "1.0",
+        'odom/max_radius': "40.0"}
+
+    configured_params = RewrittenYaml(
+            source_file=param_dir,
+            root_key='',
+            param_rewrites=param_substitutions,
+            convert_types=True)
+    return configured_params
+
 def launch_setup(context, *args, **kwargs):
-    slam_type = LaunchConfiguration('slam_type').perform(context)
+    # Define the 'ig_lio' package directory
+    
+    # Define the path to your parameter file
+    map_name = LaunchConfiguration('map_name').perform(context)
+    map_location = LaunchConfiguration('map_location').perform(context)
+
     use_sim_time = LaunchConfiguration('use_sim_time')
     config_path = LaunchConfiguration('config_path').perform(context)
-    ig_lio_reloc_dir = get_package_share_directory('lio_relocalization')
+    rviz_use = LaunchConfiguration('rviz')
+    rviz_cfg = LaunchConfiguration('rviz_cfg')
+    map_name = LaunchConfiguration('map_name').perform(context)
     robot_type = LaunchConfiguration('robot_type').perform(context)
-    reloc_param = slam_type +"_reloc.yaml"
-    config_path += "/" + robot_type +"_velodyne.yaml"
-
-    reloc_param_path = os.path.join(
-        ig_lio_reloc_dir,
-        'params',
-        reloc_param
-    )
-    lio_relocalization_node = Node(
-        package='lio_relocalization',
-        executable='lio_relocalization_node',
-        name='lio_relocalization_node',
+    lidar_type = LaunchConfiguration('lidar_type').perform(context)
+    config_path += "/" + robot_type +".yaml"
+    print(lidar_type)
+    # print(lidar_type)
+    if lidar_type == "livox":
+        config_path = livox_params(config_path)
+    elif lidar_type == "hesai":
+        config_path = hesai_params(config_path)
+    elif lidar_type == "robosense":
+        config_path = robosense_params(config_path)
+    elif lidar_type == "velodyne":
+        config_path = velodyne_params(config_path)
+    map_dir = os.path.join(map_location, map_name)
+    # reloc_param_path = os.path.join(
+    #     ig_lio_reloc_dir,
+    #     'params',
+    #     reloc_param
+    # )
+    # lio_relocalization_node = Node(
+    #     package='lio_relocalization',
+    #     executable='lio_relocalization_node',
+    #     name='lio_relocalization_node',
+    #     output='screen',
+    #     parameters=[reloc_param_path, {"map/map_name": LaunchConfiguration('map_name')},{'map/map_location': LaunchConfiguration('map_location')}],  # Pass the parameter file path directly
+    # )
+    # lio_tf_fusion_node =  Node(
+    #     package='lio_relocalization',
+    #     executable='lio_tf_fusion_node',
+    #     name='lio_tf_fusion_node',
+    #     output='screen',
+    #     parameters=[reloc_param_path],  # Pass the parameter file path directly
+    # )
+    ig_lio_relocalize_node = Node(
+        package='ig_lio',
+        executable='ig_lio_relocalize_node',
+        name='ig_lio_node',
         output='screen',
-        parameters=[reloc_param_path, {"map/map_name": LaunchConfiguration('map_name')},{'map/map_location': LaunchConfiguration('map_location')}],  # Pass the parameter file path directly
+        parameters=[config_path]  # Pass the parameter file path directly
     )
-    lio_tf_fusion_node =  Node(
-        package='lio_relocalization',
-        executable='lio_tf_fusion_node',
-        name='lio_tf_fusion_node',
-        output='screen',
-        parameters=[reloc_param_path],  # Pass the parameter file path directly
-    )
-
     # ground_removal_node = Node(
     #     package="pointcloud_handler",
     #     executable="filter_pointcloud",
@@ -74,8 +175,9 @@ def launch_setup(context, *args, **kwargs):
     )
     return [
         lio_relocalization_node,
-        lio_tf_fusion_node,
-        ig_lio_node,
+        ig_lio_relocalize_node
+        # lio_tf_fusion_node,
+        # ig_lio_node,
     ]
 
 def generate_launch_description():

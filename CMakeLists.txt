@@ -26,6 +26,7 @@ find_package(PCL REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(livox_ros_driver2 REQUIRED)
 find_package(TBB REQUIRED)
+find_package(techshare_ros_pkg2 REQUIRED)
 
 # Optionally, handle any custom find_package modules like 'glog.cmake'
 include(cmake/glog.cmake)
@@ -51,6 +52,7 @@ set(dependencies
   livox_ros_driver2
   std_srvs
   tf2_geometry_msgs
+  techshare_ros_pkg2
 )
 
 # Declare a C++ executable
@@ -65,8 +67,8 @@ add_executable(${PROJECT_NAME}_node
 )
 
 # Declare a C++ executable
-add_executable(${PROJECT_NAME}_keyframe_node
-  src/keyframe.cpp
+add_executable(${PROJECT_NAME}_relocalize_node
+  src/ig_lio_relocalize.cpp
   src/pointcloud_preprocess.cpp
   src/lio.cpp
   src/voxel_map.cpp
@@ -93,7 +95,7 @@ ament_target_dependencies(${PROJECT_NAME}_map_node
   ${dependencies}
 )
 # Specify libraries to link a library or executable target against
-ament_target_dependencies(${PROJECT_NAME}_keyframe_node
+ament_target_dependencies(${PROJECT_NAME}_relocalize_node
   ${dependencies}
 )
 
@@ -109,7 +111,7 @@ target_link_libraries(${PROJECT_NAME}_map_node
   glog
   gflags
 )
-target_link_libraries(${PROJECT_NAME}_keyframe_node
+target_link_libraries(${PROJECT_NAME}_relocalize_node
   ${PCL_LIBRARIES}
   ${TBB_LIBRARIES}
   glog
@@ -117,7 +119,7 @@ target_link_libraries(${PROJECT_NAME}_keyframe_node
 )
 
 # Install the executable
-install(TARGETS ${PROJECT_NAME}_node ${PROJECT_NAME}_map_node ${PROJECT_NAME}_keyframe_node
+install(TARGETS ${PROJECT_NAME}_node ${PROJECT_NAME}_map_node ${PROJECT_NAME}_relocalize_node
   DESTINATION lib/${PROJECT_NAME}
 )
 

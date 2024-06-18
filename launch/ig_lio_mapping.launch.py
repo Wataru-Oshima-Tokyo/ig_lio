@@ -11,6 +11,83 @@ from launch.event_handlers import OnProcessExit
 from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
 from launch.conditions import IfCondition
+def robosense_params(param_dir):
+    param_substitutions = {
+        'odom/lidar_topic': "/rslidar_points",
+        'odom/lidar_frame': "rslidar",
+        'odom/lidar_type': "robosense",
+        # 'N_SCAN': "32",
+        # 'Horizon_SCAN': "1800",
+        # 'timeField': "time",
+        # 'downsampleRate': "1",
+        'odom/min_radius': "0.5",
+        'odom/max_radius': "60.0"}
+
+    configured_params = RewrittenYaml(
+            source_file=param_dir,
+            root_key='',
+            param_rewrites=param_substitutions,
+            convert_types=True)
+    return configured_params
+
+
+def hesai_params(param_dir):
+    param_substitutions = {
+        'odom/lidar_topic': "/points_raw",
+        'odom/lidar_frame': "hesai_lidar",
+        'odom/lidar_type': "hesai",
+        # 'N_SCAN': "16",
+        # 'Horizon_SCAN': "1800",
+        # 'timeField': "time",
+        # 'downsampleRate': "1",
+        'odom/min_radius': "0.5",
+        'odom/max_radius': "60.0"}
+
+    configured_params = RewrittenYaml(
+            source_file=param_dir,
+            root_key='',
+            param_rewrites=param_substitutions,
+            convert_types=True)
+    return configured_params
+
+def velodyne_params(param_dir):
+    param_substitutions = {
+        'odom/lidar_topic': "/points_raw",
+        'odom/lidar_frame': "velodyne",
+        'odom/lidar_type': "velodyne",
+        # 'N_SCAN': "16",
+        # 'Horizon_SCAN': "1800",
+        # 'timeField': "time",
+        # 'downsampleRate': "1",
+        'odom/min_radius': "0.5",
+        'odom/max_radius': "60.0"}
+
+    configured_params = RewrittenYaml(
+            source_file=param_dir,
+            root_key='',
+            param_rewrites=param_substitutions,
+            convert_types=True)
+    return configured_params
+
+
+def livox_params(param_dir):
+    param_substitutions = {
+        'odom/lidar_topic': "/livox/lidar_custom",
+        'odom/lidar_frame': "livox_frame",
+        'odom/lidar_type': "livox",
+        # 'N_SCAN': "4",
+        # 'Horizon_SCAN': "6000",
+        # 'timeField': "time",
+        # 'downsampleRate': "1",
+        'odom/min_radius': "1.0",
+        'odom/max_radius': "40.0"}
+
+    configured_params = RewrittenYaml(
+            source_file=param_dir,
+            root_key='',
+            param_rewrites=param_substitutions,
+            convert_types=True)
+    return configured_params
 
 def launch_setup(context, *args, **kwargs):
     # Define the 'ig_lio' package directory
@@ -25,8 +102,18 @@ def launch_setup(context, *args, **kwargs):
     rviz_cfg = LaunchConfiguration('rviz_cfg')
     map_name = LaunchConfiguration('map_name').perform(context)
     robot_type = LaunchConfiguration('robot_type').perform(context)
-    map_location = LaunchConfiguration('map_location').perform(context)
-    config_path += "/" + robot_type +"_velodyne.yaml"
+    lidar_type = LaunchConfiguration('lidar_type').perform(context)
+    config_path += "/" + robot_type +".yaml"
+    print(lidar_type)
+    # print(lidar_type)
+    if lidar_type == "livox":
+        config_path = livox_params(config_path)
+    elif lidar_type == "hesai":
+        config_path = hesai_params(config_path)
+    elif lidar_type == "robosense":
+        config_path = robosense_params(config_path)
+    elif lidar_type == "velodyne":
+        config_path = velodyne_params(config_path)
     map_dir = os.path.join(map_location, map_name)
     
 
@@ -100,6 +187,10 @@ def generate_launch_description():
         'robot_type', default_value='go2',
         description='robot_type'
     )
+    lidar_type_arg = DeclareLaunchArgument(
+        'lidar_type', default_value='velodyne',
+        description='lidar_type'
+    )
 
     return LaunchDescription([
         declare_use_sim_time_cmd,
@@ -109,5 +200,6 @@ def generate_launch_description():
         declare_map_name_arg,
         declare_map_location_arg,
         robot_type_arg,
+        lidar_type_arg,
         OpaqueFunction(function=launch_setup)
     ])

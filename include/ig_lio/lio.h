@@ -10,7 +10,11 @@
 #include <deque>
 #include <numeric>
 #include <rclcpp/rclcpp.hpp>
-
+#include <tf2_ros/transform_broadcaster.h>
+#include <tf2/LinearMath/Quaternion.h>
+#include <tf2_ros/transform_listener.h>
+#include <tf2_ros/buffer.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 
 #include <glog/logging.h>
@@ -29,9 +33,9 @@
 #include "ig_lio/utilities.hpp"
 #include "ig_lio/voxel_map.h"
 
+
 enum MeasurementType { LIDAR, GNSS };
 enum GNSSStatus { RTK_FIXED, RTK_FLOAT, NONE };
-
 struct SensorMeasurement {
   MeasurementType measurement_type_;
   // ros time
@@ -115,7 +119,18 @@ class LIO {
   }
 
   bool IsInit() { return lio_init_; }
+  template<typename T>
+  void imuRPY2rosRPY(const sensor_msgs::msg::Imu *thisImuMsg, T *rosRoll, T *rosPitch, T *rosYaw)
+  {
+    double imuRoll, imuPitch, imuYaw;
+    tf2::Quaternion orientation;
+    tf2::fromMsg(thisImuMsg->orientation, orientation);
+    tf2::Matrix3x3(orientation).getRPY(imuRoll, imuPitch, imuYaw);
 
+    *rosRoll = imuRoll;
+    *rosPitch = imuPitch;
+    *rosYaw = imuYaw;
+  }
   
   Eigen::Matrix4d GetCurrentPose() { return curr_state_.pose; }
 
@@ -226,6 +241,7 @@ class LIO {
               Eigen::Matrix<double, 15, 1>& b,
               const double y0,
               Eigen::Matrix<double, 15, 1>& delta_x);
+
 
   Config config_;
 

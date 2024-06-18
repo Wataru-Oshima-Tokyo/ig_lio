@@ -30,14 +30,10 @@
 #include <nav_msgs/msg/odometry.hpp>
 #include <nav_msgs/msg/path.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
-#include <tf2_ros/transform_broadcaster.h>
-#include <tf2/LinearMath/Quaternion.h>
-#include <tf2_ros/transform_listener.h>
-#include <tf2_ros/buffer.h>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/filters/voxel_grid.h>
-
+#include "techshare_ros_pkg2/msg/cloud_info.hpp"
 
 
 namespace fs = boost::filesystem;
@@ -342,6 +338,7 @@ private:
     keyframe_scan_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/keyframe_scan", 10);
     cloud_registered_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/cloud_registered", 10);
     pubOdomToMap_ = this->create_publisher<nav_msgs::msg::Odometry>("/lio/odom_to_map", 20);
+    pubCloudInfo_ = this->create_publisher<techshare_ros_pkg2::msg::CloudInfo>("halna/feature/cloud_info", 20);
     path_pub_ = this->create_publisher<nav_msgs::msg::Path>("/lio/path", 10);
     LOG(INFO) << "Done setting pub/sub" << std::endl;
   }
@@ -727,6 +724,7 @@ void Process() {
     Eigen::Vector3d gyr(sensor_measurement.imu_buff_.at(i).angular_velocity.x,
                         sensor_measurement.imu_buff_.at(i).angular_velocity.y,
                         sensor_measurement.imu_buff_.at(i).angular_velocity.z);
+    lio_ptr->imuRPY2rosRPY(&(sensor_measurement.imu_buff_.at(i)), &cloudInfo.imu_roll_init, &cloudInfo.imu_pitch_init, &cloudInfo.imu_yaw_init);
     lio_ptr->Predict(time, acc, gyr);
   }
 
@@ -770,7 +768,22 @@ void Process() {
   odom_msg.pose.pose.position.y = result_pose(1, 3);
   odom_msg.pose.pose.position.z = result_pose(2, 3);
   odom_pub_->publish(odom_msg);
-  publish_odom_To_map(odom_msg);
+  //added in 6/18/2024 for cloud info
+  // Convert the quaternion to a rotation matrix
+  Eigen::Matrix3d temp_rotation_matrix = temp_q.toRotationMatrix();
+
+  // Extract the Euler angles (roll, pitch, yaw) from the rotation matrix
+  Eigen::Vector3d euler_angles = temp_rotation_matrix.eulerAngles(2, 1, 0); // ZYX order: yaw, pitch, roll
+  cloudInfo.initial_guess_x = result_pose(0, 3);
+  cloudInfo.initial_guess_y = result_pose(1, 3);
+  cloudInfo.initial_guess_z = result_pose(2, 3);
+  cloudInfo.initial_guess_roll  = euler_angles[0];
+  cloudInfo.initial_guess_pitch = euler_angles[1];
+  cloudInfo.initial_guess_yaw   = euler_angles[2];
+
+
+
+  // publish_odom_To_map(odom_msg);
   // transform: odom to robot_frame
   geometry_msgs::msg::TransformStamped transformStamped;
 
@@ -814,6 +827,7 @@ void Process() {
   scan_msg.header.stamp.sec = sec_part;
   scan_msg.header.stamp.nanosec = nanosec_part;
   current_scan_pub_->publish(scan_msg);
+  cloudInfo.cloud_current_scan = scan_msg;
   // publish keyframe path and scan
   static bool is_first_keyframe = true;
   static Eigen::Matrix4d last_keyframe = result_pose;
@@ -831,6 +845,7 @@ void Process() {
   cloud_registered_msg.header.frame_id = this->odom_frame;
   cloud_registered_msg.header.stamp = scan_msg.header.stamp;
   cloud_registered_pub_->publish(cloud_registered_msg);
+  cloudInfo.cloud_deskewed = cloud_registered_msg;
   if (is_first_keyframe || delta_p.block<3, 1>(0, 3).norm() > 1.0 ||
       norm_ > 0.18) {
           if (debug_)
@@ -868,10 +883,9 @@ void Process() {
     pose_stamped.pose.orientation.z = temp_q.z();
     path_array.poses.push_back(pose_stamped);
     path_pub_->publish(path_array);
-
-    
+    cloudInfo.cloud_keyframe = keyframe_scan_msg;
   }
-
+  
   // Setp 6: Save trajectory for evo evaluation
   static size_t delay_count = 0;
   if (delay_count > 50) {
@@ -978,7 +992,8 @@ void Process() {
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr keyframe_scan_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_registered_pub_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub_;
-   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pubOdomToMap_;
+  rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pubOdomToMap_;
+  rclcpp::Publisher<techshare_ros_pkg2::msg::CloudInfo>::SharedPtr pubCloudInfo_;
 
   // TF Broadcaster
   std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
@@ -1028,7 +1043,7 @@ void Process() {
                                             0.0, 1.0, 0.0,  // Second row
                                             0.0, 0.0, 1.0}; // Third row
   nav_msgs::msg::Path path_array;
-
+  techshare_ros_pkg2::msg::CloudInfo cloudInfo;
   Timer timer;
   std::shared_ptr<PointCloudPreprocess> cloud_preprocess_ptr;
   SensorMeasurement sensor_measurement;

@@ -21,6 +21,7 @@
   <depend>tf2_ros</depend>
   <depend>tf2</depend>
   <depend>nav_msgs</depend>
+  <depend>techshare_ros_pkg2</depend>
   <!-- Add any additional ROS2 dependencies your package might have -->
 
   <!-- If you use any messages or services that have their own packages, make sure to add them here as well -->
