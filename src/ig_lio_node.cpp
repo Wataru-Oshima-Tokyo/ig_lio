@@ -59,6 +59,8 @@ public:
       lidar_type_ = LidarType::LIVOX;
     } else if (lidar_type_string == "hesai"){
       lidar_type_ = LidarType::HESAI;
+    } else if (lidar_type_string == "robosense"){
+      lidar_type_ = LidarType::ROBOSENSE;
     } else {
       RCLCPP_ERROR(this->get_logger(), "Error lidar type!");
       rclcpp::shutdown();
