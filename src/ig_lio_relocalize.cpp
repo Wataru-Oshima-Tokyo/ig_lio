@@ -43,6 +43,7 @@
 #include <pcl/point_types.h>
 #include <pcl/registration/ndt.h>  // For NormalDistributionsTransform
 #include <pcl/registration/icp.h>  // For IterativeClosestPoint
+#include <pcl/filters/crop_box.h>
 // using symbol_shorthand::X; // Pose3 (x,y,z,r,p,y)
 // using symbol_shorthand::V; // Vel   (xdot,ydot,zdot)
 // using symbol_shorthand::B; // Bias  (ax,ay,az,gx,gy,gz)
@@ -187,14 +188,14 @@ private:
                                             std::bind(&IG_LIO_RELOCALIZATION_NODE::laserCloudInfoHandler,this,std::placeholders::_1));
         subIniPoseFromRviz = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>("/initialpose", 8, 
                                       std::bind(&IG_LIO_RELOCALIZATION_NODE::initialpose_callback,this,std::placeholders::_1));
-        subRelocationOdom = this->create_subscription<nav_msgs::msg::Odometry>("halna/relocation/robot_to_map", 10, 
-                                      std::bind(&IG_LIO_RELOCALIZATION_NODE::relocation_odom_callback,this,std::placeholders::_1));
-        
+
         rclcpp::QoS qos_profile(10);
         qos_profile.durability(rclcpp::DurabilityPolicy::TransientLocal);
         rclcpp::PublisherOptionsWithAllocator<std::allocator<void>> pub_options;
         pub_options.use_intra_process_comm = rclcpp::IntraProcessSetting::Disable;
         globalMap_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("global_map", qos_profile, pub_options);
+        subMap_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("lio/sub_map", 10);
+        laser2Map_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("lio/laser_to_map", 10);
         pubOdomAftMappedROS = this->create_publisher<nav_msgs::msg::Odometry> ("halna/test/odometry", 1);
         pubPath = this->create_publisher<nav_msgs::msg::Path>("halna/mapping/path", 1);
         pubOdomToMapPose = this->create_publisher<geometry_msgs::msg::PoseStamped>("halna/mapping/pose_odomTo_map", 1);
@@ -311,7 +312,7 @@ private:
         pose_odomTo_map.pose.orientation.z = q_odomTo_map.z();
         pose_odomTo_map.pose.orientation.w = q_odomTo_map.w();
         pubOdomToMapPose->publish(pose_odomTo_map);
-        T_odom_to_map = poseToMatrix(pose_odomTo_map);
+        // T_odom_to_map = poseToMatrix(pose_odomTo_map);
       }
   }
   void cloudGlobalLoad(){
@@ -402,12 +403,14 @@ private:
 
       /******************added by gc************************/
         mtxWin.lock();
-        downsampleCurrentScan();
+        downsampleSubMapAndLaserToMap();
         int latestFrameIDGlobalLocalize;
         // Convert odometry to Eigen matrix
         // Eigen::Matrix4d T_odom = odomToMatrix(latest_odom);
         CloudPtr latestCloudIn(new CloudType());
-        *latestCloudIn += *laserCloudKeyFrameLastDS;
+        CloudPtr targetCloud(new CloudType());
+        *latestCloudIn += *laserKeyFrameToMapDS;
+        *targetCloud += *subMapDS;
         mtxWin.unlock();
 
         // // Combine T_odom with T_odom_to_map
@@ -468,12 +471,12 @@ private:
 	    //std::cout << "matricInitGuess: " << matricInitGuess << std::endl;
         //Firstly perform ndt in coarse resolution
         ndt.setInputSource(latestCloudIn);
-        ndt.setInputTarget(cloudGlobalMapDS);
+        ndt.setInputTarget(targetCloud);
         pcl::PointCloud<PointType>::Ptr unused_result_0(new pcl::PointCloud<PointType>());
         ndt.align(*unused_result_0, matricInitGuess);
         //use the outcome of ndt as the initial guess for ICP
         icp.setInputSource(latestCloudIn);
-        icp.setInputTarget(cloudGlobalMapDS);
+        icp.setInputTarget(targetCloud);
         pcl::PointCloud<PointType>::Ptr unused_result(new pcl::PointCloud<PointType>());
         icp.align(*unused_result, ndt.getFinalTransformation());
 
@@ -660,6 +663,10 @@ private:
       laserCloudCurrentScanLast.reset(new CloudType());
       laserCloudKeyFrameLastDS.reset(new CloudType());
       laserCloudCurrentScanLastDS.reset(new CloudType());
+      subMap.reset(new CloudType());
+      subMapDS.reset(new CloudType());
+      laserKeyFrameToMap.reset(new CloudType());
+      laserKeyFrameToMapDS.reset(new CloudType());
       resetLIO();
       for (int i = 0; i < 6; ++i){
           transformInTheWorld[i] = 0;
@@ -718,7 +725,80 @@ private:
         // RCLCPP_INFO(this->get_logger(), "convert from ros msg to pcl");
         pcl::fromROSMsg(msgIn->cloud_keyframe,  *laserCloudKeyFrameLast);
         pcl::fromROSMsg(msgIn->cloud_current_scan, *laserCloudCurrentScanLast);
+
+
+        //placeholder:: for converting the odom keyframe to map 
+        //!--- this is wrong here needs to fix ----------
+        PointTypePose thisOdomToMap = trans2PointTypePose(transformInTheWorld);
+        laserKeyFrameToMap = transformPointCloud(laserCloudCurrentScanLast, &thisOdomToMap);
+        // ----------------------------------------------
+        // Convert the sub-map to ROS message
+        sensor_msgs::msg::PointCloud2 laser_to_map_msg;
+        pcl::toROSMsg(*laserKeyFrameToMap, laser_to_map_msg);
+        laser_to_map_msg.header.frame_id = "map";
+        laser_to_map_msg.header.stamp = msgIn->header.stamp;
+
+        // Publish the sub-map
+        laser2Map_pub_->publish(laser_to_map_msg);
         latest_odom = cloudInfo.current_odom;
+        geometry_msgs::msg::Pose latest_odom_pose = latest_odom.pose.pose;
+        // Create PointTypePose from the latest odometry
+        PointTypePose latest_odom_pose_struct;
+        latest_odom_pose_struct.x = latest_odom_pose.position.x;
+        latest_odom_pose_struct.y = latest_odom_pose.position.y;
+        latest_odom_pose_struct.z = latest_odom_pose.position.z;
+        // Convert quaternion to roll, pitch, yaw
+        double roll, pitch, yaw;
+        tf2::Quaternion q(
+            latest_odom_pose.orientation.x,
+            latest_odom_pose.orientation.y,
+            latest_odom_pose.orientation.z,
+            latest_odom_pose.orientation.w);
+        tf2::Matrix3x3 m(q);
+        m.getRPY(roll, pitch, yaw);
+        // Assign to struct fields
+        latest_odom_pose_struct.roll = static_cast<float>(roll);
+        latest_odom_pose_struct.pitch = static_cast<float>(pitch);
+        latest_odom_pose_struct.yaw = static_cast<float>(yaw);
+        // Create the transformation from the odometry pose
+        Eigen::Affine3f T_latestOdom = poseToAffine3f(latest_odom_pose_struct);
+        // Create the transformation from odom to map
+        Eigen::Affine3f T_OdomToMap = poseToAffine3f(thisOdomToMap);
+        // Transform the latest odometry pose to the map frame
+        Eigen::Affine3f T_map = T_OdomToMap * T_latestOdom;
+        // Extract the transformed position and orientation
+        // Extract the transformed position and orientation
+        float x, y, z, transformed_roll, transformed_pitch, transformed_yaw;
+        pcl::getTranslationAndEulerAngles(T_map, x, y, z, transformed_roll, transformed_pitch, transformed_yaw);
+
+
+        // Create the transformed pose in the map frame
+        PointTypePose transformed_pose;
+        mtxtranformOdomToWorld.lock();
+        tranformOdomToWorld[0] = transformed_roll;
+        tranformOdomToWorld[1] = transformed_pitch;
+        tranformOdomToWorld[2] = transformed_yaw;
+        tranformOdomToWorld[3] = x;
+        tranformOdomToWorld[4] = y;
+        tranformOdomToWorld[5] = z;
+        pcl::CropBox<PointType> cropBoxFilter;
+        cropBoxFilter.setInputCloud(cloudGlobalMap);
+        cropBoxFilter.setMin(Eigen::Vector4f(tranformOdomToWorld[3] - 5, y - 5, z - 5, 1.0));
+        cropBoxFilter.setMax(Eigen::Vector4f(tranformOdomToWorld[3] + 5, y + 5, z + 5, 1.0));
+        mtxtranformOdomToWorld.unlock();
+
+
+        sensor_msgs::msg::PointCloud2 subMapMsg;
+        cropBoxFilter.filter(*subMap);
+        pcl::toROSMsg(*subMap, subMapMsg);
+        // Convert the sub-map to ROS message
+
+        subMapMsg.header.frame_id = "map";
+        subMapMsg.header.stamp = msgIn->header.stamp;
+
+        // Publish the sub-map
+        subMap_pub_->publish(subMapMsg);    
+
         mtxWin.unlock();
         /************************************added by gc*****************************/
         //if the sysytem is not initialized after the first scan for the system to initialize
@@ -773,6 +853,19 @@ private:
       laserCloudCurrentScanLastDSNum = laserCloudCurrentScanLastDS->size();
   }
 
+  void downsampleSubMapAndLaserToMap()
+  {
+      // Downsample cloud from current scan
+      laserCloudKeyFrameLastDS->clear();
+      downSizeFilterKeyFrame.setInputCloud(subMap);
+      downSizeFilterKeyFrame.filter(*subMapDS);
+    //   laserCloudKeyFrameLastDSNum = laserCloudKeyFrameLastDS->size();
+
+      laserCloudCurrentScanLastDS->clear();
+      downSizeFilterCurrentScan.setInputCloud(laserKeyFrameToMap);
+      downSizeFilterCurrentScan.filter(*laserKeyFrameToMapDS);
+    //   laserCloudCurrentScanLastDSNum = laserCloudCurrentScanLastDS->size();
+  }
 
   void allocate_relio_Memory()
   {
@@ -791,33 +884,7 @@ private:
 
   }
 
-  void relocation_odom_callback(const nav_msgs::msg::Odometry::SharedPtr odom_to_mapMsg){
-      if (initializedFlag != Initialized) return;
 
-      float x = odom_to_mapMsg->pose.pose.position.x;
-      float y = odom_to_mapMsg->pose.pose.position.y;
-      float z = odom_to_mapMsg->pose.pose.position.z;
-
-      //roll-pitch-yaw
-      tf2::Quaternion q_global;
-      double roll_global; double pitch_global; double yaw_global;
-
-      q_global.setX(odom_to_mapMsg->pose.pose.orientation.x);
-      q_global.setY(odom_to_mapMsg->pose.pose.orientation.y);
-      q_global.setZ(odom_to_mapMsg->pose.pose.orientation.z);
-      q_global.setW(odom_to_mapMsg->pose.pose.orientation.w);
-
-      tf2::Matrix3x3(q_global).getRPY(roll_global, pitch_global, yaw_global);
-      //global transformation
-      mtxtranformOdomToWorld.lock();
-      tranformOdomToWorld[0] = roll_global;
-      tranformOdomToWorld[1] = pitch_global;
-      tranformOdomToWorld[2] = yaw_global;
-      tranformOdomToWorld[3] = x;
-      tranformOdomToWorld[4] = y;
-      tranformOdomToWorld[5] = z;
-      mtxtranformOdomToWorld.unlock();
-  }
   
 
   void initialpose_callback(const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr pose_msg)
@@ -896,6 +963,15 @@ private:
   {
       return pcl::getTransformation(thisPoint.x, thisPoint.y, thisPoint.z, thisPoint.roll, thisPoint.pitch, thisPoint.yaw);
   }
+ // Function to create an Eigen::Affine3f transformation from PointTypePose (added by wataru 6/20/2024)
+  Eigen::Affine3f poseToAffine3f(const PointTypePose &pose) {
+    Eigen::Translation3f translation(pose.x, pose.y, pose.z);
+    Eigen::AngleAxisf rollAngle(pose.roll, Eigen::Vector3f::UnitX());
+    Eigen::AngleAxisf pitchAngle(pose.pitch, Eigen::Vector3f::UnitY());
+    Eigen::AngleAxisf yawAngle(pose.yaw, Eigen::Vector3f::UnitZ());
+    Eigen::Quaternionf quaternion = yawAngle * pitchAngle * rollAngle;
+    return translation * quaternion;
+  }
 
   Eigen::Affine3f trans2Affine3f(float transformIn[])
   {
@@ -923,92 +999,92 @@ private:
       }
       return cloudOut;
   }
-  Eigen::Matrix4d poseToMatrix(const geometry_msgs::msg::PoseStamped& pose_msg) {
-    // Initialize a 4x4 transformation matrix
-    Eigen::Matrix4d transformation_matrix = Eigen::Matrix4d::Identity();
+//   Eigen::Matrix4d poseToMatrix(const geometry_msgs::msg::PoseStamped& pose_msg) {
+//     // Initialize a 4x4 transformation matrix
+//     Eigen::Matrix4d transformation_matrix = Eigen::Matrix4d::Identity();
 
-    // Extract the translation components from the pose
-    transformation_matrix(0, 3) = pose_msg.pose.position.x;
-    transformation_matrix(1, 3) = pose_msg.pose.position.y;
-    transformation_matrix(2, 3) = pose_msg.pose.position.z;
+//     // Extract the translation components from the pose
+//     transformation_matrix(0, 3) = pose_msg.pose.position.x;
+//     transformation_matrix(1, 3) = pose_msg.pose.position.y;
+//     transformation_matrix(2, 3) = pose_msg.pose.position.z;
 
-    // Extract the rotation components from the pose
-    tf2::Quaternion q(
-        pose_msg.pose.orientation.x,
-        pose_msg.pose.orientation.y,
-        pose_msg.pose.orientation.z,
-        pose_msg.pose.orientation.w
-    );
+//     // Extract the rotation components from the pose
+//     tf2::Quaternion q(
+//         pose_msg.pose.orientation.x,
+//         pose_msg.pose.orientation.y,
+//         pose_msg.pose.orientation.z,
+//         pose_msg.pose.orientation.w
+//     );
 
-    // Convert quaternion to rotation matrix
-    tf2::Matrix3x3 rotation_matrix(q);
+//     // Convert quaternion to rotation matrix
+//     tf2::Matrix3x3 rotation_matrix(q);
 
-    // Fill the upper-left 3x3 block of the transformation matrix with the rotation matrix
-    for (int i = 0; i < 3; ++i) {
-        for (int j = 0; j < 3; ++j) {
-            transformation_matrix(i, j) = rotation_matrix[i][j];
-        }
-    }
+//     // Fill the upper-left 3x3 block of the transformation matrix with the rotation matrix
+//     for (int i = 0; i < 3; ++i) {
+//         for (int j = 0; j < 3; ++j) {
+//             transformation_matrix(i, j) = rotation_matrix[i][j];
+//         }
+//     }
 
-    return transformation_matrix;
-    }
-    Eigen::Matrix4d odomToMatrix(const nav_msgs::msg::Odometry& odom_msg) {
-      // Initialize a 4x4 transformation matrix to identity
-      Eigen::Matrix4d transformation_matrix = Eigen::Matrix4d::Identity();
+//     return transformation_matrix;
+//     }
+    // Eigen::Matrix4d odomToMatrix(const nav_msgs::msg::Odometry& odom_msg) {
+    //   // Initialize a 4x4 transformation matrix to identity
+    //   Eigen::Matrix4d transformation_matrix = Eigen::Matrix4d::Identity();
 
-      // Extract the translation components from the odometry
-      transformation_matrix(0, 3) = odom_msg.pose.pose.position.x;
-      transformation_matrix(1, 3) = odom_msg.pose.pose.position.y;
-      transformation_matrix(2, 3) = odom_msg.pose.pose.position.z;
+    //   // Extract the translation components from the odometry
+    //   transformation_matrix(0, 3) = odom_msg.pose.pose.position.x;
+    //   transformation_matrix(1, 3) = odom_msg.pose.pose.position.y;
+    //   transformation_matrix(2, 3) = odom_msg.pose.pose.position.z;
 
-      // Extract the rotation components from the odometry
-      tf2::Quaternion q(
-          odom_msg.pose.pose.orientation.x,
-          odom_msg.pose.pose.orientation.y,
-          odom_msg.pose.pose.orientation.z,
-          odom_msg.pose.pose.orientation.w
-      );
+    //   // Extract the rotation components from the odometry
+    //   tf2::Quaternion q(
+    //       odom_msg.pose.pose.orientation.x,
+    //       odom_msg.pose.pose.orientation.y,
+    //       odom_msg.pose.pose.orientation.z,
+    //       odom_msg.pose.pose.orientation.w
+    //   );
 
-      // Convert quaternion to rotation matrix
-      tf2::Matrix3x3 rotation_matrix(q);
+    //   // Convert quaternion to rotation matrix
+    //   tf2::Matrix3x3 rotation_matrix(q);
 
-      // Fill the upper-left 3x3 block of the transformation matrix with the rotation matrix
-      for (int i = 0; i < 3; ++i) {
-          for (int j = 0; j < 3; ++j) {
-              transformation_matrix(i, j) = rotation_matrix[i][j];
-          }
-      }
+    //   // Fill the upper-left 3x3 block of the transformation matrix with the rotation matrix
+    //   for (int i = 0; i < 3; ++i) {
+    //       for (int j = 0; j < 3; ++j) {
+    //           transformation_matrix(i, j) = rotation_matrix[i][j];
+    //       }
+    //   }
 
-      return transformation_matrix;
-  }
-  nav_msgs::msg::Odometry matrixToOdom(const Eigen::Matrix4d& transformation_matrix) {
-      nav_msgs::msg::Odometry odom_msg;
+    //   return transformation_matrix;
+    // }
+//   nav_msgs::msg::Odometry matrixToOdom(const Eigen::Matrix4d& transformation_matrix) {
+//       nav_msgs::msg::Odometry odom_msg;
 
-      // Set the position
-      odom_msg.pose.pose.position.x = transformation_matrix(0, 3);
-      odom_msg.pose.pose.position.y = transformation_matrix(1, 3);
-      odom_msg.pose.pose.position.z = transformation_matrix(2, 3);
+//       // Set the position
+//       odom_msg.pose.pose.position.x = transformation_matrix(0, 3);
+//       odom_msg.pose.pose.position.y = transformation_matrix(1, 3);
+//       odom_msg.pose.pose.position.z = transformation_matrix(2, 3);
 
-      // Set the orientation
-      tf2::Matrix3x3 rotation_matrix(
-          transformation_matrix(0, 0), transformation_matrix(0, 1), transformation_matrix(0, 2),
-          transformation_matrix(1, 0), transformation_matrix(1, 1), transformation_matrix(1, 2),
-          transformation_matrix(2, 0), transformation_matrix(2, 1), transformation_matrix(2, 2)
-      );
-      tf2::Quaternion q;
-      rotation_matrix.getRotation(q);
+//       // Set the orientation
+//       tf2::Matrix3x3 rotation_matrix(
+//           transformation_matrix(0, 0), transformation_matrix(0, 1), transformation_matrix(0, 2),
+//           transformation_matrix(1, 0), transformation_matrix(1, 1), transformation_matrix(1, 2),
+//           transformation_matrix(2, 0), transformation_matrix(2, 1), transformation_matrix(2, 2)
+//       );
+//       tf2::Quaternion q;
+//       rotation_matrix.getRotation(q);
 
-      odom_msg.pose.pose.orientation.x = q.x();
-      odom_msg.pose.pose.orientation.y = q.y();
-      odom_msg.pose.pose.orientation.z = q.z();
-      odom_msg.pose.pose.orientation.w = q.w();
+//       odom_msg.pose.pose.orientation.x = q.x();
+//       odom_msg.pose.pose.orientation.y = q.y();
+//       odom_msg.pose.pose.orientation.z = q.z();
+//       odom_msg.pose.pose.orientation.w = q.w();
 
-      // Set the header (you may need to adjust the frame_id and timestamp)
-      odom_msg.header.frame_id = "map";
-      odom_msg.child_frame_id = "base_link";
+//       // Set the header (you may need to adjust the frame_id and timestamp)
+//       odom_msg.header.frame_id = "map";
+//       odom_msg.child_frame_id = "base_link";
 
-      return odom_msg;
-  }
+//       return odom_msg;
+//   }
     // ----------------------------------------------------------------------------------------------------------------------------------------------
 
 
@@ -1024,6 +1100,8 @@ private:
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pubOdomAftMappedROS;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubKeyPoses;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr globalMap_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr subMap_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr laser2Map_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubHistoryKeyFrames;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubIcpKeyFrames;    
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubRecentKeyFrames;   
@@ -1048,7 +1126,6 @@ private:
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr subGPS;
   rclcpp::Subscription<techshare_ros_pkg2::msg::CloudInfo>::SharedPtr subLaserCloudInfo;
   rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr subIniPoseFromRviz;
-  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr subRelocationOdom;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr subInitializedType;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr subIniPoseFromSc;
   nav_msgs::msg::Odometry latest_odom;
@@ -1070,6 +1147,10 @@ private:
   CloudPtr laserCloudCurrentScanLast; // surf feature set from odoOptimization
   CloudPtr laserCloudKeyFrameLastDS; // downsampled keyframe featuer set from odoOptimization
   CloudPtr laserCloudCurrentScanLastDS; // downsampled surf featuer set from odoOptimization
+  CloudPtr subMap;
+  CloudPtr subMapDS;
+  CloudPtr laserKeyFrameToMap;
+  CloudPtr laserKeyFrameToMapDS;
 
   CloudPtr laserCloudOri;
   CloudPtr coeffSel;

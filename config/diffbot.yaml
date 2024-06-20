@@ -4,7 +4,7 @@
     odom/sendTF: false
     #topic names 
     odom/lidar_topic: 
-    odom/imu_topic: /imu/data2 #/imu_correct
+    odom/imu_topic: /imu/data #/imu_correct
     odom/lidar_type:  # livox velodyne ouster
 
     #frames
