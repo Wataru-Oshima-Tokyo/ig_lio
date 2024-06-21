@@ -161,7 +161,7 @@ def launch_setup(context, *args, **kwargs):
         ig_lio_node,
         ig_lio_map_node,
         ig_lio_transform_node,
-        rviz_node
+        # rviz_node
     ]
 def generate_launch_description():
     package_path = get_package_share_directory('ig_lio')
