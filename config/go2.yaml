@@ -62,4 +62,10 @@
     # map/save_map_path: /home/agilex/humble_ws #do not put / at the end of line
     # map/map_name: jfe
     map/map_frame: map
+    map/map_leafsize: 0.08
+
+
+    ## for relocation
+    reloc/max_translation_diff: 1.0
+    reloc/max_rotation_diff: 0.1
 
