@@ -4,7 +4,7 @@
     odom/sendTF: false
     #topic names 
     odom/lidar_topic: 
-    odom/imu_topic: /imu/data2 #/imu_correct
+    odom/imu_topic: /imu/data #/imu_correct
     odom/lidar_type:  # livox velodyne ouster
 
     #frames
@@ -19,7 +19,7 @@
     odom/enable_ahrs_initalization: false
     odom/enable_acc_correct: false
 
-    odom/scan_resolution: 0.2
+    odom/scan_resolution: 0.02
     odom/voxel_map_resolution: 0.5
     odom/max_iterations: 10
 
@@ -33,6 +33,8 @@
     odom/init_ba_cov: 0.0001
     odom/init_bg_cov: 0.0001
     odom/gravity: 9.80665
+
+    odom/keyframe_leafsize: 0.08
 
     odom/gicp_constraints_gain: 100.0
     odom/point2plane_constraints_gain: 1000.0
@@ -62,4 +64,10 @@
     # map/save_map_path: /home/agilex/humble_ws #do not put / at the end of line
     # map/map_name: jfe
     map/map_frame: map
+    map/map_leafsize: 0.08
+
+
+    ## for relocation
+    reloc/max_translation_diff: 1.0
+    reloc/max_rotation_diff: 0.1
 

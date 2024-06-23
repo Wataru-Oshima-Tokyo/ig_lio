@@ -22,7 +22,7 @@ def robosense_params(param_dir):
         # 'timeField': "time",
         # 'downsampleRate': "1",
         'odom/min_radius': "0.5",
-        'odom/max_radius': "60.0"}
+        'odom/max_radius': "120.0"}
 
     configured_params = RewrittenYaml(
             source_file=param_dir,
@@ -42,7 +42,7 @@ def hesai_params(param_dir):
         # 'timeField': "time",
         # 'downsampleRate': "1",
         'odom/min_radius': "0.5",
-        'odom/max_radius': "60.0"}
+        'odom/max_radius': "120.0"}
 
     configured_params = RewrittenYaml(
             source_file=param_dir,
@@ -61,7 +61,7 @@ def velodyne_params(param_dir):
         # 'timeField': "time",
         # 'downsampleRate': "1",
         'odom/min_radius': "0.5",
-        'odom/max_radius': "60.0"}
+        'odom/max_radius': "120.0"}
 
     configured_params = RewrittenYaml(
             source_file=param_dir,
@@ -80,7 +80,7 @@ def livox_params(param_dir):
         # 'Horizon_SCAN': "6000",
         # 'timeField': "time",
         # 'downsampleRate': "1",
-        'odom/min_radius': "1.0",
+        'odom/min_radius': "0.3",
         'odom/max_radius': "40.0"}
 
     configured_params = RewrittenYaml(

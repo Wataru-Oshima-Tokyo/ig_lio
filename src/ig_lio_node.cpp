@@ -127,6 +127,7 @@ private:
     this->declare_parameter<double>("odom/init_ba_cov", 0.0001);
     this->declare_parameter<double>("odom/init_bg_cov", 0.0001);
     this->declare_parameter<double>("odom/gravity", 9.80665);
+    this->declare_parameter<double>("odom/keyframe_leafsize", 0.5);
 
     // Declare and get parameters for GICP constraints, outlier rejection, and others
     this->declare_parameter<double>("odom/gicp_constraints_gain", 100.0);
@@ -165,6 +166,7 @@ private:
     this->get_parameter("odom/init_ba_cov", init_ba_cov);
     this->get_parameter("odom/init_bg_cov", init_bg_cov);
     this->get_parameter("odom/gravity", gravity);
+    this->get_parameter("odom/keyframe_leafsize", keyframe_leafsize);    
 
     this->get_parameter("odom/gicp_constraints_gain", gicp_constraints_gain);
     this->get_parameter("odom/point2plane_constraints_gain", point2plane_constraints_gain);
@@ -249,7 +251,7 @@ private:
 
     lio_ptr = std::make_shared<LIO>(lio_config);
 
-    voxel_filter.setLeafSize(0.5, 0.5, 0.5);
+    voxel_filter.setLeafSize(keyframe_leafsize, keyframe_leafsize, keyframe_leafsize);
 
     // save trajectory
     fs::path result_path = fs::path(package_path_) / "result" / "lio_odom.txt";
@@ -793,6 +795,7 @@ void Process() {
   cloud_registered_msg.header.stamp = scan_msg.header.stamp;
   cloud_registered_pub_->publish(cloud_registered_msg);
   cloudInfo.cloud_deskewed = cloud_registered_msg;
+  cloudInfo.keyframe_available = false;
   if (is_first_keyframe || delta_p.block<3, 1>(0, 3).norm() > 1.0 ||
       norm_ > 0.18) {
           if (debug_)
@@ -811,6 +814,7 @@ void Process() {
     CloudPtr trans_cloud_DS(new CloudType());
     pcl::transformPointCloud(*cloud_DS, *trans_cloud_DS, result_pose);
     sensor_msgs::msg::PointCloud2 keyframe_scan_msg;
+
     pcl::toROSMsg(*trans_cloud_DS, keyframe_scan_msg);
     keyframe_scan_msg.header.frame_id = this->odom_frame;
     keyframe_scan_msg.header.stamp = scan_msg.header.stamp;
@@ -831,6 +835,7 @@ void Process() {
     path_array.poses.push_back(pose_stamped);
     path_pub_->publish(path_array);
     cloudInfo.cloud_keyframe = keyframe_scan_msg;
+    cloudInfo.keyframe_available = true;
   }
   
   // Setp 6: Save trajectory for evo evaluation
@@ -915,6 +920,7 @@ void Process() {
   double scan_resolution, voxel_map_resolution;
   int max_iterations;
   double min_radius, max_radius;
+  double keyframe_leafsize;
   // data deque
   std::deque<std::pair<double, pcl::PointCloud<PointType>::Ptr>> cloud_buff;
   std::deque<sensor_msgs::msg::Imu> imu_buff;
