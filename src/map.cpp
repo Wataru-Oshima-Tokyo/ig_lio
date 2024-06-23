@@ -33,8 +33,8 @@ private:
         this->get_parameter("map/map_name", this->map_name_);
         this->declare_parameter<std::string>("map/map_frame", "odom");
         this->get_parameter("map/map_frame", this->map_frame_);
-                this->declare_parameter<double>("map/leaf_size", 0.5);
-        this->get_parameter("map/leaf_size", this->leaf_size_);
+        this->declare_parameter<double>("map/map_leafsize", 0.5);
+        this->get_parameter("map/map_leafsize", this->leaf_size_);
     }
 
     void keyframeCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
