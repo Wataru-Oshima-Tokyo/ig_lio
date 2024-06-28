@@ -153,24 +153,24 @@ private:
 
   void DeclareParams(){
       declare_parameter("switchflag", false);
-      declare_parameter("reloc/history_keyframe_fitness_score", 0.2);
-      declare_parameter("map/map_name", "test");
-      declare_parameter("map/map_location", "/Downloads/LOAM/");
-      declare_parameter("odom/keyframe_leafsize", 0.1);
-      declare_parameter("map/map_leafsize", 0.1);
-      declare_parameter("reloc/max_translation_diff", 0.5);
-      declare_parameter("reloc/max_rotation_diff", 0.1); //(in radians)
+      declare_parameter("ig_lio_config.relocation.history_keyframe_fitness_score", 0.2);
+      declare_parameter("common.mapName", "test");
+      declare_parameter("common.mapLocation", "/Downloads/LOAM/");
+      declare_parameter("ig_lio_config.odom.keyframe_leafsize", 0.1);
+      declare_parameter("ig_lio_config.map.map_leafsize", 0.1);
+      declare_parameter("ig_lio_config.relocation.max_translation_diff", 0.5);
+      declare_parameter("ig_lio_config.relocation.max_rotation_diff", 0.1); //(in radians)
   }
 
   void GetParams(){
       get_parameter("switchflag", switchflag);
-      get_parameter("reloc/history_keyframe_fitness_score", historyKeyframeFitnessScore);  
-      get_parameter("map/map_name", map_name);
-      get_parameter("map/map_location", map_location);
-      get_parameter("odom/keyframe_leafsize", odometryKeyFrameLeafSize);
-      get_parameter("map/map_leafsize", mapLeafSize);
-      get_parameter("reloc/max_translation_diff", max_translation_diff);
-      get_parameter("reloc/max_rotation_diff", max_rotation_diff);
+      get_parameter("ig_lio_config.relocation.history_keyframe_fitness_score", historyKeyframeFitnessScore);  
+      get_parameter("common.mapName", map_name);
+      get_parameter("common.mapLocation", map_location);
+      get_parameter("ig_lio_config.odom.keyframe_leafsize", odometryKeyFrameLeafSize);
+      get_parameter("ig_lio_config.map.map_leafsize", mapLeafSize);
+      get_parameter("ig_lio_config.relocation.max_translation_diff", max_translation_diff);
+      get_parameter("ig_lio_config.relocation.max_rotation_diff", max_rotation_diff);
 
  
   }

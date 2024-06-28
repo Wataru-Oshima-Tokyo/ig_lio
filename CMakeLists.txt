@@ -79,7 +79,7 @@ add_executable(${PROJECT_NAME}_relocalize_node
 
 # Declare a C++ executable
 add_executable(${PROJECT_NAME}_map_node
-  src/map.cpp
+  src/ig_lio_map.cpp
 )
 
 # Declare a C++ executable

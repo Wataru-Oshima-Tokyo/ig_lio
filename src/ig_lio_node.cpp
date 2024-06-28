@@ -103,82 +103,82 @@ private:
 
   void DeclareParams(){
     // Initialize publishers, subscribers, parameters, etc.
-    this->declare_parameter<std::string>("odom/imu_topic", "imu/data");
-    this->declare_parameter<std::string>("odom/lidar_topic", "velodyne_points");
-    this->declare_parameter<std::string>("odom/lidar_type", "velodyne");
+    this->declare_parameter<std::string>("common.imuTopic", "imu/data");
+    this->declare_parameter<std::string>("common.pointCloudTopic", "velodyne_points");
+    this->declare_parameter<std::string>("common.lidarType", "velodyne");
 
-    this->declare_parameter<std::string>("odom/odom_frame","odom");
-    this->declare_parameter<std::string>("odom/robot_frame","base_link");
+    this->declare_parameter<std::string>("common.odometryFrame","odom");
+    this->declare_parameter<std::string>("common.robotFrame","base_link");
 
-    this->declare_parameter<double>("odom/time_scale", 1000);
-    this->declare_parameter<int>("odom/point_filter_num", 6);
+    this->declare_parameter<double>("ig_lio_config.odom.time_scale", 1000);
+    this->declare_parameter<int>("ig_lio_config.odom.point_filter_num", 6);
     // Declare and get parameters for init LIO
-    this->declare_parameter<double>("odom/scan_resolution", 0.5);
-    this->declare_parameter<double>("odom/voxel_map_resolution", 0.5);
-    this->declare_parameter<int>("odom/max_iterations", 10);
+    this->declare_parameter<double>("ig_lio_config.odom.scan_resolution", 0.5);
+    this->declare_parameter<double>("ig_lio_config.odom.voxel_map_resolution", 0.5);
+    this->declare_parameter<int>("ig_lio_config.odom.max_iterations", 10);
     // Declare and get various covariance and gravity parameters
-    this->declare_parameter<double>("odom/acc_cov", 0.1);
-    this->declare_parameter<double>("odom/gyr_cov", 0.1);
-    this->declare_parameter<double>("odom/ba_cov", 0.000001);
-    this->declare_parameter<double>("odom/bg_cov", 0.000001);
-    this->declare_parameter<double>("odom/init_ori_cov", 0.0001);
-    this->declare_parameter<double>("odom/init_pos_cov", 0.0001);
-    this->declare_parameter<double>("odom/init_vel_cov", 100.0);
-    this->declare_parameter<double>("odom/init_ba_cov", 0.0001);
-    this->declare_parameter<double>("odom/init_bg_cov", 0.0001);
-    this->declare_parameter<double>("odom/gravity", 9.80665);
-    this->declare_parameter<double>("odom/keyframe_leafsize", 0.5);
+    this->declare_parameter<double>("ig_lio_config.odom.acc_cov", 0.1);
+    this->declare_parameter<double>("ig_lio_config.odom.gyr_cov", 0.1);
+    this->declare_parameter<double>("ig_lio_config.odom.ba_cov", 0.000001);
+    this->declare_parameter<double>("ig_lio_config.odom.bg_cov", 0.000001);
+    this->declare_parameter<double>("ig_lio_config.odom.init_ori_cov", 0.0001);
+    this->declare_parameter<double>("ig_lio_config.odom.init_pos_cov", 0.0001);
+    this->declare_parameter<double>("ig_lio_config.odom.init_vel_cov", 100.0);
+    this->declare_parameter<double>("ig_lio_config.odom.init_ba_cov", 0.0001);
+    this->declare_parameter<double>("ig_lio_config.odom.init_bg_cov", 0.0001);
+    this->declare_parameter<double>("ig_lio_config.odom.gravity", 9.80665);
+    this->declare_parameter<double>("ig_lio_config.odom.keyframe_leafsize", 0.5);
 
     // Declare and get parameters for GICP constraints, outlier rejection, and others
-    this->declare_parameter<double>("odom/gicp_constraints_gain", 100.0);
-    this->declare_parameter<double>("odom/point2plane_constraints_gain", 1000.0);
-    this->declare_parameter<bool>("odom/enable_undistort", true);
-    this->declare_parameter<bool>("odom/enable_outlier_rejection", true);
-    this->declare_parameter<bool>("odom/enable_acc_correct", false);
-    this->declare_parameter<bool>("odom/enable_ahrs_initalization", true);
+    this->declare_parameter<double>("ig_lio_config.odom.gicp_constraints_gain", 100.0);
+    this->declare_parameter<double>("ig_lio_config.odom.point2plane_constraints_gain", 1000.0);
+    this->declare_parameter<bool>("ig_lio_config.odom.enable_undistort", true);
+    this->declare_parameter<bool>("ig_lio_config.odom.enable_outlier_rejection", true);
+    this->declare_parameter<bool>("ig_lio_config.odom.enable_acc_correct", false);
+    this->declare_parameter<bool>("ig_lio_config.odom.enable_ahrs_initalization", true);
     // Declare and get parameters for min and max radius
-    this->declare_parameter<double>("odom/min_radius", 1.0);
-    this->declare_parameter<double>("odom/max_radius", 150.0);
-    this->declare_parameter<bool>("odom/debug", false);
+    this->declare_parameter<double>("common.lidarMinRange", 1.0);
+    this->declare_parameter<double>("common.lidarMaxRange", 150.0);
+    this->declare_parameter<bool>("ig_lio_config.odom.debug", false);
 
   }
 
   void GetParams(){
-    this->get_parameter("odom/imu_topic", imu_topic);
-    this->get_parameter("odom/lidar_topic", lidar_topic);
-    this->get_parameter("odom/lidar_type", lidar_type_string);
-    this->get_parameter("odom/odom_frame", odom_frame);
-    this->get_parameter("odom/robot_frame", robot_frame);    
+    this->get_parameter("common.imuTopic", imu_topic);
+    this->get_parameter("common.pointCloudTopic", lidar_topic);
+    this->get_parameter("common.lidarType", lidar_type_string);
+    this->get_parameter("common.odometryFrame", odom_frame);
+    this->get_parameter("common.robotFrame", robot_frame);    
 
-    this->get_parameter("odom/time_scale", time_scale);
-    this->get_parameter("odom/point_filter_num", point_filter_num);
-    this->get_parameter("odom/scan_resolution", scan_resolution);
-    this->get_parameter("odom/voxel_map_resolution", voxel_map_resolution);
-    this->get_parameter("odom/max_iterations", max_iterations);
+    this->get_parameter("ig_lio_config.odom.time_scale", time_scale);
+    this->get_parameter("ig_lio_config.odom.point_filter_num", point_filter_num);
+    this->get_parameter("ig_lio_config.odom.scan_resolution", scan_resolution);
+    this->get_parameter("ig_lio_config.odom.voxel_map_resolution", voxel_map_resolution);
+    this->get_parameter("ig_lio_config.odom.max_iterations", max_iterations);
     // Retrieve the covariance and gravity parameters
-    this->get_parameter("odom/acc_cov", acc_cov);
-    this->get_parameter("odom/gyr_cov", gyr_cov);
-    this->get_parameter("odom/ba_cov", ba_cov);
-    this->get_parameter("odom/bg_cov", bg_cov);
-    this->get_parameter("odom/init_ori_cov", init_ori_cov);
-    this->get_parameter("odom/init_pos_cov", init_pos_cov);
-    this->get_parameter("odom/init_vel_cov", init_vel_cov);
-    this->get_parameter("odom/init_ba_cov", init_ba_cov);
-    this->get_parameter("odom/init_bg_cov", init_bg_cov);
-    this->get_parameter("odom/gravity", gravity);
-    this->get_parameter("odom/keyframe_leafsize", keyframe_leafsize);    
+    this->get_parameter("ig_lio_config.odom.acc_cov", acc_cov);
+    this->get_parameter("ig_lio_config.odom.gyr_cov", gyr_cov);
+    this->get_parameter("ig_lio_config.odom.ba_cov", ba_cov);
+    this->get_parameter("ig_lio_config.odom.bg_cov", bg_cov);
+    this->get_parameter("ig_lio_config.odom.init_ori_cov", init_ori_cov);
+    this->get_parameter("ig_lio_config.odom.init_pos_cov", init_pos_cov);
+    this->get_parameter("ig_lio_config.odom.init_vel_cov", init_vel_cov);
+    this->get_parameter("ig_lio_config.odom.init_ba_cov", init_ba_cov);
+    this->get_parameter("ig_lio_config.odom.init_bg_cov", init_bg_cov);
+    this->get_parameter("ig_lio_config.odom.gravity", gravity);
+    this->get_parameter("ig_lio_config.odom.keyframe_leafsize", keyframe_leafsize);    
 
-    this->get_parameter("odom/gicp_constraints_gain", gicp_constraints_gain);
-    this->get_parameter("odom/point2plane_constraints_gain", point2plane_constraints_gain);
-    this->get_parameter("odom/enable_undistort", enable_undistort);
-    this->get_parameter("odom/enable_outlier_rejection", enable_outlier_rejection);
-    this->get_parameter("odom/enable_acc_correct", enable_acc_correct);
-    this->get_parameter("odom/enable_ahrs_initalization", enable_ahrs_initalization);
+    this->get_parameter("ig_lio_config.odom.gicp_constraints_gain", gicp_constraints_gain);
+    this->get_parameter("ig_lio_config.odom.point2plane_constraints_gain", point2plane_constraints_gain);
+    this->get_parameter("ig_lio_config.odom.enable_undistort", enable_undistort);
+    this->get_parameter("ig_lio_config.odom.enable_outlier_rejection", enable_outlier_rejection);
+    this->get_parameter("ig_lio_config.odom.enable_acc_correct", enable_acc_correct);
+    this->get_parameter("ig_lio_config.odom.enable_ahrs_initalization", enable_ahrs_initalization);
 
-    // Retrieve the paramodom/eters as shown previously
-    this->get_parameter("odom/min_radius", min_radius);
-    this->get_parameter("odom/max_radius", max_radius);
-    this->get_parameter("odom/debug", debug_);
+    // Retrieve the paramig_lio_config.odom.eters as shown previously
+    this->get_parameter("common.lidarMinRange", min_radius);
+    this->get_parameter("common.lidarMaxRange", max_radius);
+    this->get_parameter("ig_lio_config.odom.debug", debug_);
   
 
   }
@@ -286,10 +286,10 @@ private:
 
 
     // Setup publishers
-    odom_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("/lio/odometry", 10);
+    odom_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("/halna/odometry/robot_odom", 10);
     current_scan_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/current_scan", 10);
     keyframe_scan_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/keyframe_scan", 10);
-    cloud_registered_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/cloud_registered", 10);
+    cloud_registered_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/halna/mapping/cloud_registered_raw", 10);
     pubOdomToMap_ = this->create_publisher<nav_msgs::msg::Odometry>("/lio/odom_to_map", 20);
     pubCloudInfo_ = this->create_publisher<techshare_ros_pkg2::msg::CloudInfo>("halna/feature/cloud_info", 20);
     path_pub_ = this->create_publisher<nav_msgs::msg::Path>("/lio/path", 10);

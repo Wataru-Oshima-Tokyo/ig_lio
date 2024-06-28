@@ -6,6 +6,8 @@
 #include <pcl/io/pcd_io.h>
 #include <pcl/filters/voxel_grid.h>
 #include "std_srvs/srv/trigger.hpp"
+#include <boost/filesystem.hpp>
+
 
 class IgLioMapNode : public rclcpp::Node {
 public:
@@ -27,14 +29,14 @@ private:
     void getParams() {
         
         
-        this->declare_parameter<std::string>("map/map_location", "");
-        this->get_parameter("map/map_location", this->map_location_);
-        this->declare_parameter<std::string>("map/map_name", "ig_lio_map");
-        this->get_parameter("map/map_name", this->map_name_);
-        this->declare_parameter<std::string>("map/map_frame", "odom");
-        this->get_parameter("map/map_frame", this->map_frame_);
-        this->declare_parameter<double>("map/map_leafsize", 0.5);
-        this->get_parameter("map/map_leafsize", this->leaf_size_);
+        this->declare_parameter<std::string>("common.mapLocation", "");
+        this->get_parameter("common.mapLocation", this->map_location_);
+        this->declare_parameter<std::string>("common.mapName", "ig_lio_map");
+        this->get_parameter("common.mapName", this->map_name_);
+        this->declare_parameter<std::string>("common.mapFrame", "odom");
+        this->get_parameter("common.mapFrame", this->map_frame_);
+        this->declare_parameter<double>("ig_lio_config.map.map_leafsize", 0.5);
+        this->get_parameter("ig_lio_config.map.map_leafsize", this->leaf_size_);
     }
 
     void keyframeCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
@@ -57,14 +59,31 @@ private:
                         std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
         std::string save_dir = this->map_location_ + "/" + this->map_name_;
         int unused = system((std::string("mkdir -p ") + save_dir).c_str());
-        std::string file_path = save_dir +  "/GlobalMap.pcd";
-        if (pcl::io::savePCDFileBinary(file_path, *this->ig_lio_map) == 0) {
-            response->success = true;
-            response->message = "Map saved successfully to " + file_path;
-        } else {
-            response->success = false;
-            response->message = "Failed to save the map.";
+        std::string filePath = save_dir +  "/GlobalMap.pcd";
+        std::string message="";
+        if (boost::filesystem::exists(filePath)) {
+            filePath = save_dir + "GlobalMap_new.pcd";
+            if (boost::filesystem::exists(filePath)) {
+                // Rename the existing file
+                std::string newFileName = save_dir + "/GlobalMap_" + std::to_string(save_counter) + ".pcd";
+                boost::filesystem::rename(filePath, newFileName);
+                save_counter++;
+            }
+            message = "A new map for "  +  this->map_name_ + " is saved separately since there is a pre-built map already";
+        }else{
+            
+            message = "The first map for " + this->map_name_ + "is saved as GlobalMap";
         }
+        int ret = pcl::io::savePCDFileBinary(filePath, *this->ig_lio_map);
+        if (ret == 0) {
+            std::cout << "File " << filePath << " saved successfully." << std::endl;
+            response->success = true;
+        } else {
+            std::cerr << "Error saving file " << filePath << std::endl;
+            response->success = false;
+        }
+        
+        response->message = message;
     }
 
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr keyframe_sub_;
@@ -76,6 +95,7 @@ private:
     std::string map_frame_;
     std::string map_name_;
     double leaf_size_;
+    int save_counter=0;
 };
 
 int main(int argc, char **argv) {

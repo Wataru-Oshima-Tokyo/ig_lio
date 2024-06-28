@@ -111,39 +111,39 @@ class RobotOdomProcess : public rclcpp::Node
     }
     void DeclareParams(){
 
-        this->declare_parameter<std::string>("odom/odom_frame","odom");
-        this->declare_parameter<std::string>("odom/robot_frame","base_link");
-        this->declare_parameter<std::string>("odom/imu_frame", "imu_link");
-        this->declare_parameter<std::string>("odom/lidar_frame","velodyne");
-        this->declare_parameter<std::string>("map/map_frame","map" );
+        this->declare_parameter<std::string>("common.odomFrame","odom");
+        this->declare_parameter<std::string>("common.robotFrame","base_link");
+        this->declare_parameter<std::string>("common.imuFrame", "imu_link");
+        this->declare_parameter<std::string>("common.lidarFrame","velodyne");
+        this->declare_parameter<std::string>("common.mapFrame","map" );
 
         // For vector parameters like extrinsic, it's a bit more complex
         // Declare and get extrinsic parameters (vectors)
-        this->declare_parameter<std::vector<double>>("extrinsics/imu2lidar/t", default_t_imu_lidar);
-        this->declare_parameter<std::vector<double>>("extrinsics/imu2lidar/r", default_R_imu_lidar);
+        this->declare_parameter<std::vector<double>>("ig_lio_config.extrinsics.imu2lidar/t", default_t_imu_lidar);
+        this->declare_parameter<std::vector<double>>("ig_lio_config.extrinsics.imu2lidar/r", default_R_imu_lidar);
 
-        this->declare_parameter<std::vector<double>>("extrinsics/robot2imu/t", default_t_imu_lidar);
-        this->declare_parameter<std::vector<double>>("extrinsics/robot2imu/r", default_R_imu_lidar);
+        this->declare_parameter<std::vector<double>>("ig_lio_config.extrinsics.robot2imu/t", default_t_imu_lidar);
+        this->declare_parameter<std::vector<double>>("ig_lio_config.extrinsics.robot2imu/r", default_R_imu_lidar);
 
-        this->declare_parameter<std::vector<double>>("extrinsics/robot2lidar/t", default_t_imu_lidar);
-        this->declare_parameter<std::vector<double>>("extrinsics/robot2lidar/r", default_R_imu_lidar);
+        this->declare_parameter<std::vector<double>>("ig_lio_config.extrinsics.robot2lidar/t", default_t_imu_lidar);
+        this->declare_parameter<std::vector<double>>("ig_lio_config.extrinsics.robot2lidar/r", default_R_imu_lidar);
 
     }
 
 
         void GetParams(){
-            this->get_parameter("odom/odom_frame", odom_frame);
-            this->get_parameter("odom/robot_frame", robot_frame);    
-            this->get_parameter("odom/imu_frame", imu_frame);
-            this->get_parameter("odom/lidar_frame", lidar_frame);
-            this->get_parameter("map/map_frame", map_frame);
+            this->get_parameter("common.odomFrame", odom_frame);
+            this->get_parameter("common.robotFrame", robot_frame);    
+            this->get_parameter("common.imuFrame", imu_frame);
+            this->get_parameter("common.lidarFrame", lidar_frame);
+            this->get_parameter("common.mapFrame", map_frame);
 
-            this->get_parameter("extrinsics/imu2lidar/t", t_imu_lidar_v);
-            this->get_parameter("extrinsics/imu2lidar/r", R_imu_lidar_v);
-            this->get_parameter("extrinsics/robot2imu/t", robot2imu_t);
-            this->get_parameter("extrinsics/robot2imu/r", robot2imu_r);
-            this->get_parameter("extrinsics/robot2lidar/t", robot2lidar_t);
-            this->get_parameter("extrinsics/robot2lidar/r", robot2lidar_r);
+            this->get_parameter("ig_lio_config.extrinsics.imu2lidar/t", t_imu_lidar_v);
+            this->get_parameter("ig_lio_config.extrinsics.imu2lidar/r", R_imu_lidar_v);
+            this->get_parameter("ig_lio_config.extrinsics.robot2imu/t", robot2imu_t);
+            this->get_parameter("ig_lio_config.extrinsics.robot2imu/r", robot2imu_r);
+            this->get_parameter("ig_lio_config.extrinsics.robot2lidar/t", robot2lidar_t);
+            this->get_parameter("ig_lio_config.extrinsics.robot2lidar/r", robot2lidar_r);
 
         }
     void setTopics(){
@@ -168,7 +168,7 @@ class RobotOdomProcess : public rclcpp::Node
                                                     std::bind(&RobotOdomProcess::odomToMapPoseHandler,this,std::placeholders::_1), sub1_opt);
 
         //订阅激光里程计，来自mapOptimization,用两帧之间的的足式里程计得到状态方程，和两帧之间的激光里程记的相对位资（这个位姿用于更新位/姿bias、速度/角速度bias），并更新
-        subLaserOdometry = this->create_subscription<nav_msgs::msg::Odometry>("/lio/odometry", 5, 
+        subLaserOdometry = this->create_subscription<nav_msgs::msg::Odometry>("/halna/odometry/robot_odom", 5, 
                                                     std::bind(&RobotOdomProcess::LaserOdometryHandler,this,std::placeholders::_1), sub2_opt);
 
         // add by zzr 20221210 To test whether the original data upload is disconnected
@@ -300,6 +300,9 @@ class RobotOdomProcess : public rclcpp::Node
             tfOdom_To_baselink->sendTransform(trans_odom_to_baselink);
 
             geometry_msgs::msg::TransformStamped base_link_to_imu;
+            base_link_to_imu.header.stamp = odometry.header.stamp;
+            base_link_to_imu.header.frame_id = this->robot_frame;
+            base_link_to_imu.child_frame_id = this->imu_frame;
             base_link_to_imu.transform.translation.x = this->extrinsics.robot2imu.t[0];
             base_link_to_imu.transform.translation.y = this->extrinsics.robot2imu.t[1];
             base_link_to_imu.transform.translation.z = this->extrinsics.robot2imu.t[2];
@@ -393,7 +396,7 @@ class RobotOdomProcess : public rclcpp::Node
             nav_msgs::msg::Odometry robot_to_map_relocation;
             robot_to_map_relocation.header.stamp = odometry.header.stamp;
             robot_to_map_relocation.header.frame_id = this->map_frame;
-            robot_to_map_relocation.child_frame_id = "relocation";
+            robot_to_map_relocation.child_frame_id = this->robot_frame;
             robot_to_map_relocation.pose.pose.position.x = delta_x ;
             robot_to_map_relocation.pose.pose.position.y = delta_y ;
             robot_to_map_relocation.pose.pose.position.z = delta_z ;
