@@ -7,7 +7,9 @@
 #include <pcl/filters/voxel_grid.h>
 #include "std_srvs/srv/trigger.hpp"
 #include <boost/filesystem.hpp>
-
+#include "rapidjson/document.h"
+#include "rapidjson/writer.h"
+#include "rapidjson/stringbuffer.h"
 
 class IgLioMapNode : public rclcpp::Node {
 public:
@@ -82,7 +84,45 @@ private:
             std::cerr << "Error saving file " << filePath << std::endl;
             response->success = false;
         }
-        
+
+        // Save JSON file with voxelization using RapidJSON
+        std::string jsonFilePath = save_dir + "/" + this->map_name_ +".json";
+        rapidjson::Document document;
+        document.SetObject();
+
+        // Assuming ig_lio_map is a pcl point cloud
+        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
+        pcl::io::loadPCDFile(filePath, *cloud);
+
+        // Voxelization with voxel size of 0.1m
+        float voxelSize = 0.5f;
+        pcl::VoxelGrid<pcl::PointXYZ> voxelGrid;
+        voxelGrid.setInputCloud(cloud);
+        voxelGrid.setLeafSize(voxelSize, voxelSize, voxelSize);
+        pcl::PointCloud<pcl::PointXYZ>::Ptr filteredCloud(new pcl::PointCloud<pcl::PointXYZ>);
+        voxelGrid.filter(*filteredCloud);
+
+        // Add voxelized data to JSON object
+        rapidjson::Value points(rapidjson::kArrayType);
+        for (const auto& point : filteredCloud->points) {
+            rapidjson::Value pointObj(rapidjson::kObjectType);
+            pointObj.AddMember("x", point.x, document.GetAllocator());
+            pointObj.AddMember("y", point.y, document.GetAllocator());
+            pointObj.AddMember("z", point.z, document.GetAllocator());
+            points.PushBack(pointObj, document.GetAllocator());
+        }
+        document.AddMember("points", points, document.GetAllocator());
+
+        // Write JSON to file
+        rapidjson::StringBuffer buffer;
+        rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+        document.Accept(writer);
+
+        std::ofstream jsonFile(jsonFilePath);
+        jsonFile << buffer.GetString() << std::endl;
+        jsonFile.close();
+
+
         response->message = message;
     }
 
