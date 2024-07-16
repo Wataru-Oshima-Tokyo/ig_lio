@@ -42,11 +42,11 @@ constexpr double kAccScale = 9.80665;
 std::atomic<bool> FLAG_EXIT(false);
 using std::placeholders::_1;
 
-class IG_LIO_NODE : public rclcpp::Node {
+class IgLioNode : public rclcpp::Node {
 public:
-  IG_LIO_NODE(std::string package_path) : Node("ig_lio_node"){
+  IgLioNode(std::string package_path) : Node("ig_lio_node"){
     // Setup signal handler
-    signal(SIGINT, IG_LIO_NODE::SigHandle);
+    signal(SIGINT, IgLioNode::SigHandle);
     DeclareParams();
     GetParams();
     package_path_ = package_path;
@@ -75,11 +75,11 @@ public:
 
 
     // Start the loop in a separate thread
-    processing_thread_ = std::thread(&IG_LIO_NODE::processingLoop, this);
+    processing_thread_ = std::thread(&IgLioNode::processingLoop, this);
       // Setup the wall timer
   }
 
-  ~IG_LIO_NODE() {
+  ~IgLioNode() {
     // Set exit flag and join the thread on destruction
     if (processing_thread_.joinable()) {
         processing_thread_.join();
@@ -273,15 +273,15 @@ private:
 
     // Setup subscribers
     imu_sub_ = this->create_subscription<sensor_msgs::msg::Imu>(
-        imu_topic, 10, std::bind(&IG_LIO_NODE::ImuCallBack, this, _1));
+        imu_topic, 10, std::bind(&IgLioNode::ImuCallBack, this, _1));
     if (lidar_type_ == LidarType::LIVOX) {
       cloud_sub_ = nullptr;
       livox_sub_ = this->create_subscription<livox_ros_driver2::msg::CustomMsg>(
-        lidar_topic, 10, std::bind(&IG_LIO_NODE::LivoxCloudCallBack, this, std::placeholders::_1));
+        lidar_topic, 10, std::bind(&IgLioNode::LivoxCloudCallBack, this, std::placeholders::_1));
     } else {
       livox_sub_ = nullptr;
       cloud_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-        lidar_topic, 10, std::bind(&IG_LIO_NODE::CloudCallBack, this, std::placeholders::_1));
+        lidar_topic, 10, std::bind(&IgLioNode::CloudCallBack, this, std::placeholders::_1));
     }
 
 
@@ -365,7 +365,7 @@ void CloudCallBack(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
             cloud_buff.clear();
           }
           last_lidar_timestamp = lidar_timestamp;
-
+          // get timestamp
           cloud_buff.push_back(
               std::make_pair(msg->header.stamp.sec + msg->header.stamp.nanosec * 1e-9, cloud_ptr));
         }
@@ -451,12 +451,20 @@ bool SyncMeasurements() {
   static double lidar_mean_scantime = 0.0;
   static size_t lidar_scan_num = 0;
 
+
+
+
+
+
   if (cloud_buff.empty() || imu_buff.empty()) {
     if(debug_){
       LOG(WARNING) << "either imu or cloud is empty" << std::endl;
     }
     return false;
   }
+
+
+
 
   std::lock_guard<std::mutex> lock(buff_mutex);
 
@@ -606,20 +614,46 @@ bool SyncMeasurements() {
     }
   }
 
-  if (imu_buff.back().header.stamp.sec +
-                  imu_buff.back().header.stamp.nanosec * 1e-9 <
-      sensor_measurement.lidar_end_time_) {
-    if(debug_){
-      // Calculate the time difference
-      double imu_time = imu_buff.back().header.stamp.sec + imu_buff.back().header.stamp.nanosec * 1e-9;
-      double time_difference = sensor_measurement.lidar_end_time_ - imu_time; // This is how much the LIDAR end time is ahead of the IMU time
+    if (imu_buff.back().header.stamp.sec +
+                    imu_buff.back().header.stamp.nanosec * 1e-9 <
+        sensor_measurement.lidar_end_time_) {
+      if(debug_){
+        // Calculate the time difference
+        double imu_time = imu_buff.back().header.stamp.sec + imu_buff.back().header.stamp.nanosec * 1e-9;
+        double time_difference = sensor_measurement.lidar_end_time_ - imu_time; // This is how much the LIDAR end time is ahead of the IMU time
 
-      // Log the time difference
-      LOG(WARNING) << "this is the timer issue for lidar time and imu timer. Difference: " 
-                  << time_difference << " seconds." << std::endl;
-    }    
-    return false;
-  }
+        // Log the time difference
+        LOG(WARNING) << "this is the timer issue for lidar time and imu timer. Difference: " 
+                    << time_difference << " seconds." << std::endl;
+      }    
+      return false;
+    }
+
+    double timeScanCur = cloud_buff.front().second->points.front().curvature;
+    double timeScanEnd = cloud_buff.front().second->points.back().curvature;     //sensor_measurement.lidar_end_time_;
+
+    double imu_buff_front_time = imu_buff.front().header.stamp.sec + imu_buff.front().header.stamp.nanosec * 1e-9;
+    double imu_buff_back_time = imu_buff.back().header.stamp.sec +  imu_buff.back().header.stamp.nanosec * 1e-9;
+
+    if (imu_buff_front_time > timeScanCur || imu_buff_back_time < timeScanEnd)
+    {
+        LOG(WARNING)<<"imu_buff_front_time : "<< std::fixed << imu_buff_front_time << std::endl;
+        LOG(WARNING)<<"imu_buff_back_time : "<< std::fixed << imu_buff_back_time << std::endl;
+
+        LOG(WARNING)<<"imuQueue_front_time_1 : "<< std::fixed << imu_buff.front().header.stamp.sec + imu_buff.front().header.stamp.nanosec * 1e-9 << std::endl;
+        LOG(WARNING)<<"imuQueue_back_time_1 : "<< std::fixed << imu_buff.back().header.stamp.sec +  imu_buff.back().header.stamp.nanosec * 1e-9 << std::endl;
+
+        LOG(WARNING)<<"timeScanCur : "<< std::fixed << timeScanCur << std::endl;
+        LOG(WARNING)<<"timeScanEnd : "<< std::fixed << timeScanEnd << std::endl;
+
+        LOG(WARNING)<<"imu_buff_front_time > timeScanCur : "<< (imu_buff_front_time > timeScanCur) << std::endl;
+        LOG(WARNING)<<"imu_buff_back_time < timeScanEnd : "<< (imu_buff_back_time < timeScanEnd) << std::endl;
+
+        RCLCPP_DEBUG(rclcpp::get_logger("rclcpp"), "Waiting for IMU     `  `` ...");
+        LOG(WARNING)<<"RCLCPP_DEBUG"<< std::endl;
+
+        return false;
+    }
 
   sensor_measurement.imu_buff_.clear();
   while (!imu_buff.empty()) {
@@ -926,6 +960,7 @@ void Process() {
   std::deque<sensor_msgs::msg::Imu> imu_buff;
   std::deque<nav_msgs::msg::Odometry> gnss_buff;
 
+  std_msgs::msg::Header cloudHeader;
   nav_msgs::msg::Path path_array;
   techshare_ros_pkg2::msg::CloudInfo cloudInfo;
   Timer timer;
@@ -945,7 +980,7 @@ int main(int argc, char **argv) {
   rclcpp::init(argc, argv);
   std::string package_path = ament_index_cpp::get_package_share_directory("ig_lio");
   Logger logger(argv, package_path);
-  auto node = std::make_shared<IG_LIO_NODE>(package_path);
+  auto node = std::make_shared<IgLioNode>(package_path);
   rclcpp::spin(node);
   rclcpp::shutdown();
   return 0;

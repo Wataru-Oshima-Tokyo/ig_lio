@@ -74,6 +74,22 @@ POINT_CLOUD_REGISTER_POINT_STRUCT (RobosensePointXYZIRT,
     (uint16_t, ring, ring) (double, timestamp, timestamp)
 )
 
+//added for livox mid360
+struct LivoxPointXYZIRT
+{
+    PCL_ADD_POINT4D
+    PCL_ADD_INTENSITY;
+    float time;
+    uint16_t ring;
+    uint16_t tag;
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+} EIGEN_ALIGN16;
+POINT_CLOUD_REGISTER_POINT_STRUCT (LivoxPointXYZIRT,
+    (float, x, x) (float, y, y) (float, z, z) (float, intensity, intensity) (float, time, time)
+    (uint16_t, ring, ring) (uint16_t, tag, tag)
+)
+
+
 class PointCloudPreprocess {
  public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -112,6 +128,10 @@ class PointCloudPreprocess {
   template <typename T>
   bool IsNear(const T& p1, const T& p2);
 
+
+  void moveFromCustomMsg(livox_ros_driver2::msg::CustomMsg::SharedPtr msg, 
+                          pcl::PointCloud<LivoxPointXYZIRT> & cloud_out);
+  
   void ProcessVelodyne(const sensor_msgs::msg::PointCloud2::SharedPtr msg,
                        pcl::PointCloud<PointType>::Ptr& cloud_out);
 

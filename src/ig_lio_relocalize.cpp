@@ -45,6 +45,24 @@
 #include <pcl/registration/ndt.h>  // For NormalDistributionsTransform
 #include <pcl/registration/icp.h>  // For IterativeClosestPoint
 #include <pcl/filters/crop_box.h>
+
+//this is a test header for gtsam
+#include <gtsam/geometry/Rot3.h>
+#include <gtsam/geometry/Pose3.h>
+#include <gtsam/slam/PriorFactor.h>
+#include <gtsam/slam/BetweenFactor.h>
+#include <gtsam/navigation/GPSFactor.h>
+#include <gtsam/navigation/ImuFactor.h>
+#include <gtsam/navigation/CombinedImuFactor.h>
+#include <gtsam/nonlinear/NonlinearFactorGraph.h>
+#include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
+#include <gtsam/nonlinear/Marginals.h>
+#include <gtsam/nonlinear/Values.h>
+#include <gtsam/inference/Symbol.h>
+
+#include <gtsam/nonlinear/ISAM2.h>
+
+
 // using symbol_shorthand::X; // Pose3 (x,y,z,r,p,y)
 // using symbol_shorthand::V; // Vel   (xdot,ydot,zdot)
 // using symbol_shorthand::B; // Bias  (ax,ay,az,gx,gy,gz)
@@ -91,24 +109,24 @@ POINT_CLOUD_REGISTER_POINT_STRUCT (PointXYZIRPYT,
 typedef PointXYZIRPYT  PointTypePose;
 
 
-class IG_LIO_RELOCALIZATION_NODE : public rclcpp::Node {
+class IgLioRelocalizationNode : public rclcpp::Node {
 public:
-  IG_LIO_RELOCALIZATION_NODE(const rclcpp::NodeOptions & options,std::string package_path) : Node("ig_lio_node"){
+  IgLioRelocalizationNode(const rclcpp::NodeOptions & options,std::string package_path) : Node("ig_lio_node"){
     // Setup signal handler
-    // signal(SIGINT, IG_LIO_RELOCALIZATION_NODE::SigHandle);
+    // signal(SIGINT, IgLioRelocalizationNode::SigHandle);
     DeclareParams();
     GetParams();
     // package_path_ = package_path;
 
     //Register pub/sub
-    allocateMemory();
     Topics();
-    cloudGlobalLoad();
+    allocateMemory();
+    
     // Start the loop in a separate thread
-    // processing_thread_ = std::thread(&IG_LIO_RELOCALIZATION_NODE::processingLoop, this);
+    // processing_thread_ = std::thread(&IgLioRelocalizationNode::processingLoop, this);
   }
 
-  ~IG_LIO_RELOCALIZATION_NODE() {
+  ~IgLioRelocalizationNode() {
     // Set exit flag and join the thread on destruction
     // if (processing_thread_.joinable()) {
     //     processing_thread_.join();
@@ -160,6 +178,9 @@ private:
       declare_parameter("ig_lio_config.map.map_leafsize", 0.1);
       declare_parameter("ig_lio_config.relocation.max_translation_diff", 0.5);
       declare_parameter("ig_lio_config.relocation.max_rotation_diff", 0.1); //(in radians)
+      declare_parameter<int>("common.startBuildingNumber", 0);
+      declare_parameter<int>("common.startFloorLevel", 0);
+
   }
 
   void GetParams(){
@@ -171,14 +192,21 @@ private:
       get_parameter("ig_lio_config.map.map_leafsize", mapLeafSize);
       get_parameter("ig_lio_config.relocation.max_translation_diff", max_translation_diff);
       get_parameter("ig_lio_config.relocation.max_rotation_diff", max_rotation_diff);
-
+      get_parameter("common.startBuildingNumber", building_number);
+      get_parameter("common.startFloorLevel", floor_level);
  
   }
   void allocateMemory()
   {
 
+      gtsam::ISAM2Params parameters;
+      parameters.relinearizeThreshold = 0.1;
+      parameters.relinearizeSkip = 1;
+      isam = new gtsam::ISAM2(parameters);
       initialized_Flag = false;
-
+        gtSAMgraph.resize(0);
+        initialEstimate.clear();
+      isamCurrentEstimate.clear();  
       cloudGlobalMap.reset(new CloudType());//addded by gc
       cloudGlobalMapDS.reset(new CloudType());//added
       cloudScanForInitialize.reset(new CloudType());
@@ -200,7 +228,7 @@ private:
       InitializedType = Manual;  //needs to have an operator
       downSizeFilterKeyFrame.setLeafSize(odometryKeyFrameLeafSize, odometryKeyFrameLeafSize, odometryKeyFrameLeafSize);
       downSizeFilterMap.setLeafSize(mapLeafSize, mapLeafSize, mapLeafSize); // for surrounding key poses of scan-to-map optimization
-
+      cloudGlobalLoad();
     }
 
     void resetLIO()
@@ -219,10 +247,12 @@ private:
 
   void Topics(){
         subLaserCloudInfo = this->create_subscription<techshare_ros_pkg2::msg::CloudInfo>("halna/feature/cloud_info", 500, 
-                                            std::bind(&IG_LIO_RELOCALIZATION_NODE::laserCloudInfoHandler,this,std::placeholders::_1));
+                                            std::bind(&IgLioRelocalizationNode::laserCloudInfoHandler,this,std::placeholders::_1));
         subIniPoseFromRviz = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>("/initialpose", 8, 
-                                      std::bind(&IG_LIO_RELOCALIZATION_NODE::initialpose_callback,this,std::placeholders::_1));
-
+                                      std::bind(&IgLioRelocalizationNode::initialpose_callback,this,std::placeholders::_1));
+        subFloorInfo = this->create_subscription<techshare_ros_pkg2::msg::FloorInfo>(
+            "halna/mapping/level", 8,
+            std::bind(&IgLioRelocalizationNode::floor_info_callback, this, std::placeholders::_1));
         rclcpp::QoS qos_profile(10);
         qos_profile.durability(rclcpp::DurabilityPolicy::TransientLocal);
         rclcpp::PublisherOptionsWithAllocator<std::allocator<void>> pub_options;
@@ -247,8 +277,8 @@ private:
         //     // RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "\033[1;32m----> Open multiple floors load.\033[0m");
 
         // }
-      std::string map_dir = map_location + "/" + map_name;
-      pcl::io::loadPCDFile(map_dir + "/GlobalMap.pcd", *cloudGlobalMap);
+      std::string map_dir = this->map_location + "/" + this->map_name + "/floor_" + std::to_string(this->building_number) +"_" + std::to_string(this->floor_level) +"/";
+      pcl::io::loadPCDFile(map_dir + "GlobalMap.pcd", *cloudGlobalMap);
       CloudPtr cloud_temp(new CloudType());
       downSizeFilterMap.setInputCloud(cloudGlobalMap);
       downSizeFilterMap.filter(*cloud_temp);
@@ -314,6 +344,14 @@ private:
         pub_pcd_config->publish(pcd_config);
 
   }
+
+
+  void floor_info_callback(const techshare_ros_pkg2::msg::FloorInfo::SharedPtr msg)
+  {
+      building_number = msg->building_number;
+      floor_level = msg->floor_level;
+  }
+
   void initialpose_callback(const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr pose_msg)
   {
       //first calculate global pose
@@ -374,7 +412,23 @@ private:
     //   mtxtranformOdomToWorld.unlock();
   }
 
-
+    void addOdomFactor()
+    {
+        // //gc: the first key pose
+        // if (cloudKeyPoses3D->points.empty())
+        // {
+        //     gtsam::noiseModel::Diagonal::shared_ptr priorNoise = gtsam::noiseModel::Diagonal::Variances((Vector(6) << 1e-2, 1e-2, M_PI*M_PI, 1e8, 1e8, 1e8).finished()); // rad*rad, meter*meter
+        //     gtSAMgraph.add(PriorFactor<Pose3>(0, trans2gtsamPose(trasnfromInTheWorld), priorNoise));
+        //     initialEstimate.insert(0, trans2gtsamPose(transformTobeMapped));
+        // }else{
+        //     noiseModel::Diagonal::shared_ptr odometryNoise = gtsam::noiseModel::Diagonal::Variances((Vector(6) << 1e-6, 1e-6, 1e-6, 1e-4, 1e-4, 1e-4).finished());
+        //     gtsam::Pose3 poseFrom = pclPointTogtsamPose3(cloudKeyPoses6D->points.back());
+        //     gtsam::Pose3 poseTo   = trans2gtsamPose(trasnfromInTheWorld);
+        //     //gc: add constraint between current pose and previous pose
+        //     gtSAMgraph.add(BetweenFactor<Pose3>(cloudKeyPoses3D->size()-1, cloudKeyPoses3D->size(), poseFrom.between(poseTo), odometryNoise));
+        //     initialEstimate.insert(cloudKeyPoses3D->size(), poseTo);
+        // }
+    }
 
     void filterPointsWithinFOV(const CloudPtr &global_map_in_base_link, float FOV_FAR, CloudPtr &global_map_in_FOV) {
         // Filter points within the FOV
@@ -506,13 +560,6 @@ private:
         transformationStream.str().c_str(),
         fitnessScore
     );
-
-
-    // // Calculate new T_map_to_odom
-    // Eigen::Matrix4f T_base_link_to_odom = T_odom_to_base_link.inverse();
-    // Eigen::Matrix4f new_T_map_to_odom = T_map_to_base_link * T_base_link_to_odom;
-    std::cout << "A new map to odom :\n" << new_T_map_to_odom << std::endl;
-
 
 
     if(isTransformationReasonable(T_map_to_odom, new_T_map_to_odom)){
@@ -943,6 +990,8 @@ private:
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr subGPS;
   rclcpp::Subscription<techshare_ros_pkg2::msg::CloudInfo>::SharedPtr subLaserCloudInfo;
   rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr subIniPoseFromRviz;
+  rclcpp::Subscription<techshare_ros_pkg2::msg::FloorInfo>::SharedPtr subFloorInfo;
+
   nav_msgs::msg::Odometry latest_odom;
   techshare_ros_pkg2::msg::CloudInfo cloudInfo;
 
@@ -989,7 +1038,17 @@ private:
   float transformInTheWorld[6];// the pose in the world, i.e. the prebuilt map
 //   float tranformOdomToWorld[6];
 
-  int level = 0;
+
+  //gtsam
+    gtsam::NonlinearFactorGraph gtSAMgraph;
+    gtsam::Values initialEstimate;
+    gtsam::ISAM2 *isam;
+    gtsam::Values isamCurrentEstimate;
+    pcl::PointCloud<PointTypePose>::Ptr cloudKeyPoses6D;//gc: can be used to illustrate the path of odometry //keep
+    pcl::PointCloud<PointTypePose>::Ptr cloudKeyPoses3D;//gc: can be used to illustrate the path of odometry //keep
+
+  int building_number;
+  int floor_level;
   bool switchflag;
 
   enum InitializedFlag
@@ -1014,15 +1073,15 @@ int main(int argc, char **argv) {
   options.use_intra_process_comms(true);
   std::string package_path = ament_index_cpp::get_package_share_directory("ig_lio");
   Logger logger(argv, package_path);
-  // auto node = std::make_shared<IG_LIO_RELOCALIZATION_NODE>(package_path);
+  // auto node = std::make_shared<IgLioRelocalizationNode>(package_path);
 
   rclcpp::executors::SingleThreadedExecutor exec; 
-  auto node = std::make_shared<IG_LIO_RELOCALIZATION_NODE>(options ,package_path);
+  auto node = std::make_shared<IgLioRelocalizationNode>(options ,package_path);
   exec.add_node(node);
 
   RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "\033[1;32m----> RELOCALIZATION Started.\033[0m");
 
-  std::thread relocalizeInWorldThread(&IG_LIO_RELOCALIZATION_NODE::reLocalizeThread, node);
+  std::thread relocalizeInWorldThread(&IgLioRelocalizationNode::reLocalizeThread, node);
   exec.spin();
 
   relocalizeInWorldThread.join();

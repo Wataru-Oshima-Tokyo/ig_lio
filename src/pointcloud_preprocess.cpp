@@ -3,32 +3,89 @@
 
 extern Timer timer;
 
+
+
+void PointCloudPreprocess::moveFromCustomMsg(livox_ros_driver2::msg::CustomMsg::SharedPtr msg, 
+                          pcl::PointCloud<LivoxPointXYZIRT> & cloud)
+{
+    cloud.clear();
+    cloud.reserve(msg->point_num);
+    LivoxPointXYZIRT point;
+    cloud.header.frame_id= msg->header.frame_id;
+    rclcpp::Time timestamp(msg->header.stamp);
+    cloud.header.stamp = timestamp.nanoseconds() / 1000; // Convert nanoseconds to microseconds
+    float start_time = msg->points[0].offset_time;
+    for(uint i=0;i<msg->point_num-1;i++)
+    {
+        point.x=msg->points[i].x; 
+        point.y=msg->points[i].y; 
+        point.z=msg->points[i].z; 
+        point.intensity=msg->points[i].reflectivity; 
+        point.tag=msg->points[i].tag; 
+        point.time= msg->points[i].offset_time*1e-9; 
+        cloud.push_back(point);
+    }
+}
+
 void PointCloudPreprocess::Process(
     const livox_ros_driver2::msg::CustomMsg::SharedPtr msg,
     pcl::PointCloud<PointType>::Ptr& cloud_out,
     const double last_start_time) {
+  pcl::PointCloud<LivoxPointXYZIRT> cloud_origin;
+  moveFromCustomMsg(msg, cloud_origin);
+
   double time_offset =
       (msg->header.stamp.sec + msg->header.stamp.nanosec * 1e-9  - last_start_time) * 1000.0;  // ms
 
-  for (size_t i = 1; i < msg->point_num; ++i) {
-    if ((msg->points[i].line < num_scans_) &&
-        ((msg->points[i].tag & 0x30) == 0x10 ||
-         (msg->points[i].tag & 0x30) == 0x00) &&
-        !HasInf(msg->points[i]) && !HasNan(msg->points[i]) &&
-        !IsNear(msg->points[i], msg->points[i - 1]) &&
-        (i % config_.point_filter_num == 0)) {
+
+  if (cloud_origin.back().time > 0) {
+    has_time_ = true;
+  }
+
+  cloud_out->reserve(cloud_origin.size());
+  // double firstpoint_time = cloud_origin.at(0).timestamp* 1e-9 ;
+
+  for (size_t i = 0; i < cloud_origin.size(); ++i) {
+    if ((i % config_.point_filter_num == 0) && !HasInf(cloud_origin.at(i)) &&
+        !HasNan(cloud_origin.at(i))) {
       PointType point;
       point.normal_x = 0;
       point.normal_y = 0;
       point.normal_z = 0;
-      point.x = msg->points[i].x;
-      point.y = msg->points[i].y;
-      point.z = msg->points[i].z;
-      point.intensity = msg->points[i].reflectivity;
-      point.curvature = time_offset + msg->points[i].offset_time * 1e-6;  // ms
-      cloud_out->push_back(point);
+      point.x = cloud_origin.at(i).x;
+      point.y = cloud_origin.at(i).y;
+      point.z = cloud_origin.at(i).z;
+      point.intensity = cloud_origin.at(i).intensity;
+      if (has_time_) {
+        point.curvature = time_offset + cloud_origin.at(i).time * 1e-6;  // ms
+      }
+      if(InRadius(point)){
+        cloud_out->push_back(point);
+      }
+        
     }
   }
+
+  // for (size_t i = 1; i < msg->point_num; ++i) {
+  //   if ((msg->points[i].line < num_scans_) &&
+  //       ((msg->points[i].tag & 0x30) == 0x10 ||
+  //        (msg->points[i].tag & 0x30) == 0x00) &&
+  //       !HasInf(msg->points[i]) && !HasNan(msg->points[i]) &&
+  //       !IsNear(msg->points[i], msg->points[i - 1]) &&
+  //       (i % config_.point_filter_num == 0)) {
+  //     PointType point;
+  //     point.normal_x = 0;
+  //     point.normal_y = 0;
+  //     point.normal_z = 0;
+  //     point.x = msg->points[i].x;
+  //     point.y = msg->points[i].y;
+  //     point.z = msg->points[i].z;
+  //     point.intensity = msg->points[i].reflectivity;
+  //     point.curvature = time_offset + msg->points[i].offset_time * 1e-6;  // ms
+  //     if(InRadius(point))
+  //       cloud_out->push_back(point);
+  //   }
+  // }
 }
 
 void PointCloudPreprocess::Process(

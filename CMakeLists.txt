@@ -27,7 +27,7 @@ find_package(Eigen3 REQUIRED)
 find_package(livox_ros_driver2 REQUIRED)
 find_package(TBB REQUIRED)
 find_package(techshare_ros_pkg2 REQUIRED)
-
+find_package(GTSAM REQUIRED)
 # Optionally, handle any custom find_package modules like 'glog.cmake'
 include(cmake/glog.cmake)
 
@@ -53,6 +53,7 @@ set(dependencies
   std_srvs
   tf2_geometry_msgs
   techshare_ros_pkg2
+  GTSAM
 )
 
 # Declare a C++ executable
@@ -122,6 +123,7 @@ target_link_libraries(${PROJECT_NAME}_relocalize_node
   ${TBB_LIBRARIES}
   glog
   gflags
+  gtsam
 )
 target_link_libraries(${PROJECT_NAME}_transform_node
   ${PCL_LIBRARIES}

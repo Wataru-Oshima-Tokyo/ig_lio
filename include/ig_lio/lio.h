@@ -16,6 +16,7 @@
 #include <tf2_ros/buffer.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <sensor_msgs/msg/imu.hpp>
+#include <techshare_ros_pkg2/msg/floor_info.hpp>
 
 #include <glog/logging.h>
 
